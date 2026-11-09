@@ -1,0 +1,1139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>曲目页 UI demo · 景深翻页</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+html,body{height:100%}
+body{margin:0;background:#060607;color:#E9E8E3;font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
+.shell{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;gap:56px}
+.frame{position:relative;flex:none}
+#device{position:absolute;left:0;top:0;width:390px;height:844px;transform-origin:0 0;border-radius:44px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.09),0 50px 120px -30px rgba(0,0,0,.95)}
+.panel{width:260px;display:flex;flex-direction:column;gap:18px;font-size:13px}
+.panel h2{margin:0;font:600 18px/1.2 'Familjen Grotesk','Helvetica Neue',Arial,sans-serif;letter-spacing:-.01em}
+.panel .cap{margin:6px 0 0;font:500 10.5px/1 'JetBrains Mono',ui-monospace,Menlo,monospace;letter-spacing:.16em;text-transform:uppercase;color:#8A8A85}
+.panel label{display:flex;flex-direction:column;gap:8px;color:#C9C8C3}
+.panel .row{display:flex;justify-content:space-between;align-items:baseline}
+.panel output{font:500 12px/1 'JetBrains Mono',ui-monospace,Menlo,monospace;color:#E9E8E3}
+.panel input[type=range]{width:100%;accent-color:var(--panel-accent,#D7F25A)}
+.panel .sws{display:flex;gap:10px}
+.panel .sw{width:28px;height:28px;border-radius:999px;border:2px solid transparent;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);cursor:pointer;padding:0}
+.panel .sw[aria-pressed=true]{border-color:#E9E8E3}
+.panel .keys{margin:4px 0 0;color:#8A8A85;line-height:1.5}
+body.narrow .panel{display:none}
+body.narrow #device{border-radius:0;box-shadow:none}
+
+body{margin:0}
+html,body{overscroll-behavior:none}
+.df-app{timeline-scope:--df-deck}
+.df-app *,.df-app *::before,.df-app *::after{box-sizing:border-box}
+.df-app button{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent}
+.df-app button:focus-visible{outline:2px solid var(--accent,#D7F25A);outline-offset:3px}
+.df-app:focus{outline:none}
+.df-stage{-webkit-mask-image:linear-gradient(180deg,transparent 0,transparent 64px,#000 120px,#000 calc(100% - 16px),transparent 100%);mask-image:linear-gradient(180deg,transparent 0,transparent 64px,#000 120px,#000 calc(100% - 16px),transparent 100%)}
+/* Paging is native horizontal scrolling: drag, momentum and snapping come from the browser.
+   Pages are sticky, so the one being left stays put while the next slides over it. */
+.df-deck{position:absolute;top:0;left:0;width:100%;height:100%;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none;scroll-timeline:--df-deck x}
+.df-deck::-webkit-scrollbar{display:none}
+.df-track{position:relative;display:flex;height:100%}
+.df-snap{position:absolute;top:0;width:390px;height:100%;scroll-snap-align:start;scroll-snap-stop:always;pointer-events:none}
+.df-page{position:-webkit-sticky;position:sticky;left:0;flex:0 0 390px;width:390px;height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:none;transform-origin:50% 46%;will-change:transform,filter,opacity}
+.df-page::-webkit-scrollbar{display:none}
+/* 0% → 50%: the page being left shrinks, sinks and blurs into the backdrop of the next page.
+   50% → 100%: one more page on, that backdrop fades out. */
+@keyframes df-sink{
+0%{transform:translate3d(0,0,0) scale(1);filter:blur(0px) brightness(1);opacity:1;animation-timing-function:cubic-bezier(.25,.46,.45,.94)}
+50%{transform:translate3d(0,var(--sink-drop,28px),0) scale(var(--sink-scale,.88));filter:blur(var(--sink-blur,40px)) brightness(.7);opacity:var(--ghost,.5);animation-timing-function:linear}
+100%{transform:translate3d(0,calc(var(--sink-drop,28px) * 1.5),0) scale(calc(var(--sink-scale,.88) - .05));filter:blur(calc(var(--sink-blur,40px) * 1.3)) brightness(.55);opacity:0}
+}
+@keyframes df-thumb{from{transform:translateX(0px)}to{transform:translateX(100px)}}
+@supports (animation-timeline: scroll()){
+.df-page{animation:df-sink linear both;animation-timeline:--df-deck}
+.df-thumb{animation:df-thumb linear both;animation-timeline:--df-deck}
+}
+.df-js .df-page,.df-js .df-thumb,.df-js-thumb .df-thumb{animation:none!important}
+.df-ico{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.df-ico-f{fill:currentColor;stroke:none}
+.df-btn,.df-play,.df-row{transition:background-color .2s ease,transform .2s ease}
+.df-btn:active,.df-play:active{transform:scale(.93)}
+@media (hover:hover){
+.df-btn:hover{background-color:rgba(244,243,239,.12)!important}
+.df-row:hover{background-color:rgba(244,243,239,.045)!important}
+.df-row:hover .df-rt{text-decoration:underline;text-underline-offset:3px}
+}
+.df-like.on{color:var(--accent,#D7F25A)}
+.df-like.on .df-ico{fill:currentColor}
+.df-wave path{fill:none;stroke-width:3px;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.df-wave-base path{stroke:rgba(244,243,239,.24)}
+.df-wave-played{clip-path:inset(0 100% 0 0)}
+.df-wave-played path{stroke:var(--accent,#D7F25A)}
+.df-hint{transition:opacity .5s ease,transform .5s ease}
+.df-hint.hide{opacity:0;transform:translate(-50%,10px)!important}
+.df-rings circle{fill:none;stroke:rgba(236,239,245,.05);stroke-width:1}
+.df-rings circle.mj{stroke:rgba(236,239,245,.095)}
+.df-cv{position:relative;overflow:hidden;isolation:isolate}
+.df-cv>span{position:absolute;display:block}
+.df-cv::after{content:"";position:absolute;top:0;left:0;right:0;bottom:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);pointer-events:none}
+.cv-ice3{background:#D5E8F1}
+.cv-ice3 .s1{left:0;right:0;top:49%;bottom:0;background:linear-gradient(180deg,#A6CADD,#7DABC7)}
+.cv-ice3 .s2{top:0;left:0;right:0;bottom:0;background:#17304F;clip-path:polygon(0 50%,16% 46%,29% 53%,45% 43%,61% 52%,77% 44%,100% 49%,100% 55%,78% 50%,62% 59%,44% 50%,30% 61%,15% 53%,0 58%)}
+.cv-ice3 .s3{left:14%;top:14%;width:16%;height:16%;border-radius:50%;box-shadow:inset 0 0 0 2px rgba(23,48,79,.8)}
+.cv-telegram{background:linear-gradient(180deg,#FF9B5E 0%,#FF6D50 58%,#E2485A 100%)}
+.cv-telegram .s1{left:18%;top:26%;width:64%;height:64%;border-radius:50%;background:#FFE2A4}
+.cv-telegram .s2{top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(180deg,rgba(58,18,30,0) 0 12.4%,rgba(58,18,30,.8) 12.4% 13%)}
+.cv-telegram .s3{left:0;right:0;bottom:0;height:24%;background:#3A121E}
+.cv-sosso{background:radial-gradient(120% 90% at 50% 100%,#B4232D 0%,#5F0F19 55%,#26060A 100%)}
+.cv-sosso .s1{left:12%;right:12%;top:18%;height:120%;border-radius:999px 999px 0 0;box-shadow:inset 0 0 0 2px #E8B65A}
+.cv-sosso .s2{left:26%;right:26%;top:34%;height:120%;border-radius:999px 999px 0 0;box-shadow:inset 0 0 0 2px rgba(232,182,90,.55)}
+.cv-sosso .s3{left:40%;right:40%;top:52%;height:120%;border-radius:999px 999px 0 0;background:#E8B65A}
+.cv-ice2{background:linear-gradient(200deg,#EEEAF8 0%,#B9B6DE 52%,#5E5D9D 100%)}
+.cv-ice2 .s1{top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.5);clip-path:polygon(0 0,60% 0,32% 100%,0 100%)}
+.cv-ice2 .s2{top:0;left:0;right:0;bottom:0;background:#2E2C66;clip-path:polygon(60% 0,63.5% 0,35.5% 100%,32% 100%)}
+.cv-ice2 .s3{top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.3);clip-path:polygon(63.5% 0,100% 0,100% 34%,52% 56%)}
+.cv-cipher{background:#0F3A3C}
+.cv-cipher .s1{top:12%;left:12%;right:12%;bottom:12%;background-image:radial-gradient(circle,rgba(95,224,200,.7) 0 20%,rgba(95,224,200,0) 24%);background-size:14.285% 14.285%}
+.cv-cipher .s2{left:45%;top:31%;width:26%;height:26%;background:#5FE0C8}
+.cv-cipher .s3{left:12%;bottom:12%;width:38%;height:2.6%;background:#E9FFF9}
+.cv-astonish{background:conic-gradient(from 200deg at 50% 50%,#2A0B4E,#7A1FA2,#FF4F9A,#FFB46C,#7A1FA2,#2A0B4E)}
+.cv-astonish .s1{top:14%;left:14%;right:14%;bottom:14%;border-radius:50%;background:radial-gradient(closest-side,#FFF3E6 0%,rgba(255,243,230,.55) 45%,rgba(255,243,230,0) 100%)}
+.cv-astonish .s2{top:0;left:0;right:0;bottom:0;background:radial-gradient(closest-side,rgba(18,4,34,0) 70%,rgba(18,4,34,.6) 100%)}
+.cv-whisper{background:#DCDDCA}
+.cv-whisper .s1{left:-34%;top:28%;width:124%;height:124%;border-radius:50%;box-shadow:inset 0 0 0 2px #66735A}
+.cv-whisper .s2{left:-14%;top:46%;width:86%;height:86%;border-radius:50%;box-shadow:inset 0 0 0 2px rgba(102,115,90,.55)}
+.cv-whisper .s3{right:16%;top:15%;width:9%;height:9%;border-radius:50%;background:#66735A}
+.cv-promising{background:#F3CE3F}
+.cv-promising .s1{top:-20%;left:-20%;right:-20%;bottom:-20%;background:repeating-radial-gradient(circle at 50% 50%,rgba(214,92,30,0) 0 5.5%,rgba(214,92,30,.85) 5.5% 6.6%)}
+.cv-promising .s2{left:39%;top:39%;width:22%;height:22%;border-radius:50%;background:#D65C1E}
+.cv-zones{background:linear-gradient(180deg,#1B2452 0 50%,#EF8B79 50% 100%)}
+.cv-zones .s1{left:30%;top:30%;width:40%;height:40%;border-radius:50%;background:linear-gradient(180deg,#F5E9D0 0 50%,#2B1D40 50% 100%)}
+.cv-zones .s2{left:17%;top:15%;width:2.6%;height:2.6%;border-radius:50%;background:#F5E9D0}
+.cv-zones .s3{right:21%;top:24%;width:1.8%;height:1.8%;border-radius:50%;background:#F5E9D0}
+.cv-meyou{background:#F2E3DA}
+.cv-meyou .s1{left:12%;top:22%;width:50%;height:50%;border-radius:50%;background:#FF6B5B;mix-blend-mode:multiply}
+.cv-meyou .s2{right:12%;top:30%;width:50%;height:50%;border-radius:50%;background:#7C6DF5;mix-blend-mode:multiply}
+.cv-meyou .s3{left:12%;right:12%;bottom:13%;height:2%;background:#2C1E2E}
+.cv-home{background:linear-gradient(180deg,#F6B36C 0%,#E07B60 46%,#5B3758 100%)}
+.cv-home .s1{top:0;left:0;right:0;bottom:0;background:#3B2341;clip-path:polygon(0 70%,22% 61%,44% 68%,66% 57%,100% 66%,100% 100%,0 100%)}
+.cv-home .s2{top:0;left:0;right:0;bottom:0;background:#23142A;clip-path:polygon(0 83%,30% 75%,58% 83%,82% 77%,100% 81%,100% 100%,0 100%)}
+.cv-home .s3{left:62%;top:63%;width:3.4%;height:3.4%;background:#FFE7A3;box-shadow:0 0 10px 3px rgba(255,214,120,.55)}
+
+</style>
+</head>
+<body>
+<div class="shell">
+<div class="frame" id="frame"><div id="device"></div></div>
+<aside class="panel" aria-label="动效参数">
+<h2>景深翻页</h2>
+<p class="cap">翻走的页</p>
+<label><span class="row"><span>模糊</span><output data-out="exitBlur"></output></span><input type="range" data-prop="exitBlur" data-unit="px" min="0" max="80" step="1" value="40"></label>
+<label><span class="row"><span>缩放</span><output data-out="exitScale"></output></span><input type="range" data-prop="exitScale" min="0.7" max="1" step="0.01" value="0.88"></label>
+<label><span class="row"><span>下沉</span><output data-out="exitDrop"></output></span><input type="range" data-prop="exitDrop" data-unit="px" min="0" max="120" step="1" value="28"></label>
+<label><span class="row"><span>残影（留在背后的上一页）</span><output data-out="ghost"></output></span><input type="range" data-prop="ghost" min="0" max="1" step="0.01" value="0.5"></label>
+<p class="cap">强调色</p>
+<div class="sws"><button type="button" class="sw" data-accent="#D7F25A" aria-label="强调色 #D7F25A" aria-pressed="true" style="background:#D7F25A"></button><button type="button" class="sw" data-accent="#8FD3FF" aria-label="强调色 #8FD3FF" aria-pressed="false" style="background:#8FD3FF"></button><button type="button" class="sw" data-accent="#FF8A5B" aria-label="强调色 #FF8A5B" aria-pressed="false" style="background:#FF8A5B"></button><button type="button" class="sw" data-accent="#F4F3EF" aria-label="强调色 #F4F3EF" aria-pressed="false" style="background:#F4F3EF"></button></div>
+<p class="keys">手机直接左右滑；电脑用触控板左右滑、鼠标拖动或 ← →。页内上下滚动。拖动滑杆会定格到翻页一半的画面。</p>
+</aside>
+</div>
+<template id="dc-template">
+<div class="df-app" ref="{{refRoot}}" data-df-root="" tabindex="0" role="region" aria-label="Track pages. Swipe sideways or use the left and right arrow keys to switch tracks." style="position: relative; width: 390px; height: 844px; overflow: hidden; background: #0C0D0F; color: #F4F3EF; font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none">
+
+<div aria-hidden="true" style="position: absolute; top: 0; left: 0; width: 390px; height: 844px; z-index: 0; pointer-events: none">
+<div style="position: absolute; left: -40%; right: -40%; top: -14%; height: 76%; background: radial-gradient(closest-side, rgba(168, 184, 214, 0.13), rgba(168, 184, 214, 0))"></div>
+<svg class="df-rings" width="390" height="844" viewBox="0 0 390 844" style="position: absolute; left: 0; top: 0">
+<circle class="mj" cx="163" cy="263" r="172"></circle>
+<circle cx="163" cy="263" r="198"></circle>
+<circle cx="163" cy="263" r="224"></circle>
+<circle cx="163" cy="263" r="250"></circle>
+<circle class="mj" cx="163" cy="263" r="276"></circle>
+<circle cx="163" cy="263" r="302"></circle>
+<circle cx="163" cy="263" r="328"></circle>
+<circle cx="163" cy="263" r="354"></circle>
+<circle class="mj" cx="163" cy="263" r="380"></circle>
+<circle cx="163" cy="263" r="406"></circle>
+<circle cx="163" cy="263" r="432"></circle>
+<circle cx="163" cy="263" r="458"></circle>
+<circle class="mj" cx="163" cy="263" r="484"></circle>
+<circle cx="163" cy="263" r="510"></circle>
+<circle cx="163" cy="263" r="536"></circle>
+<circle cx="163" cy="263" r="562"></circle>
+<circle class="mj" cx="163" cy="263" r="588"></circle>
+<circle cx="163" cy="263" r="614"></circle>
+<circle cx="163" cy="263" r="640"></circle>
+</svg>
+<svg width="390" height="844" style="position: absolute; left: 0; top: 0; opacity: 0.1; mix-blend-mode: overlay">
+<filter id="dfGrain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"></feTurbulence><feColorMatrix type="saturate" values="0"></feColorMatrix></filter>
+<rect width="390" height="844" filter="url(#dfGrain)"></rect>
+</svg>
+</div>
+
+<div class="df-stage" style="position: absolute; top: 0; left: 0; width: 390px; height: 844px; z-index: 1">
+<div class="df-deck" ref="{{refDeck}}" data-df-deck="">
+<div class="df-track" style="width: {{trackW}}">
+<sc-for list="{{pages}}" as="t" hint-placeholder-count="1">
+<i class="df-snap" aria-hidden="true" style="left: {{t.snapLeft}}"></i>
+<article class="df-page" ref="{{t.ref}}" data-df-page="" aria-label="{{t.aria}}" style="animation-range: {{t.range}}">
+<div style="padding: 120px 20px 136px; display: flex; flex-direction: column">
+
+<div style="display: flex; gap: 12px; align-items: stretch">
+<div class="{{t.coverCls}}" role="img" aria-label="{{t.coverAlt}}" style="width: 286px; height: 286px; flex: none; border-radius: 22px; box-shadow: 0 32px 44px -26px rgba(0, 0, 0, 0.8)"><span class="s1"></span><span class="s2"></span><span class="s3"></span></div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding-top: 2px">
+<span style="writing-mode: vertical-rl; font: 500 10.5px/1 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.18em; text-transform: uppercase; color: #85857F; white-space: nowrap">{{t.vlabel}}</span>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<button type="button" class="{{t.likeCls}}" aria-label="{{t.likeLabel}}" aria-pressed="{{t.likedStr}}" onClick="{{t.like}}" style="width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(244, 243, 239, 0.12); background: rgba(244, 243, 239, 0.05); cursor: pointer"><svg class="df-ico" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2s-7.2-4.4-7.2-10.1A4.1 4.1 0 0 1 12 7.4a4.1 4.1 0 0 1 7.2 2.7c0 5.7-7.2 10.1-7.2 10.1z"></path></svg></button>
+<button type="button" class="df-btn" aria-label="Add to playlist" style="width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(244, 243, 239, 0.12); background: rgba(244, 243, 239, 0.05); cursor: pointer"><svg class="df-ico" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+<button type="button" class="df-btn" aria-label="Download" style="width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(244, 243, 239, 0.12); background: rgba(244, 243, 239, 0.05); cursor: pointer"><svg class="df-ico" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5v10.5M7.5 10.5 12 15l4.5-4.5M5 19.5h14"></path></svg></button>
+</div>
+</div>
+</div>
+
+<h1 style="margin: 26px 0 0; font: 700 42px/1 'Familjen Grotesk', 'Helvetica Neue', Arial, sans-serif; letter-spacing: -0.025em; text-wrap: balance">{{t.title}}</h1>
+<p style="margin: 10px 0 0; font: 500 15px/1.35 Inter, system-ui, sans-serif; color: #A6A6A2">by <span style="color: #F4F3EF">{{t.artist}}</span></p>
+
+<div style="margin-top: 26px; display: flex; align-items: center; gap: 16px">
+<button type="button" class="df-play" aria-label="{{t.playLabel}}" onClick="{{t.toggle}}" style="width: 60px; height: 60px; flex: none; border-radius: 999px; border: 0; padding: 0; background: #F4F3EF; color: #0C0D0F; display: grid; place-items: center; cursor: pointer; box-shadow: 0 12px 30px -12px rgba(244, 243, 239, 0.45)">
+<sc-if value="{{t.playing}}" hint-placeholder-val="{{ false }}"><svg class="df-ico-f" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2"></rect><rect x="13.5" y="5" width="4" height="14" rx="1.2"></rect></svg></sc-if>
+<sc-if value="{{t.paused}}" hint-placeholder-val="{{ true }}"><svg class="df-ico-f" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.2v13.6a.9.9 0 0 0 1.38.76l10.4-6.8a.9.9 0 0 0 0-1.52L9.38 4.44A.9.9 0 0 0 8 5.2z"></path></svg></sc-if>
+</button>
+<div style="flex: 1; min-width: 0">
+<div class="df-wave" style="position: relative; height: 40px">
+<svg class="df-wave-base" viewBox="0 0 276 40" preserveAspectRatio="none" aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible"><path d="{{t.wave}}"></path></svg>
+<svg class="df-wave-played" ref="{{t.waveRef}}" data-df-wave="" viewBox="0 0 276 40" preserveAspectRatio="none" aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible"><path d="{{t.wave}}"></path></svg>
+</div>
+<div style="margin-top: 8px; display: flex; justify-content: space-between; font: 500 11px/1 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.04em; color: #85857F"><span>{{t.elapsed}}</span><span>{{t.len}}</span></div>
+</div>
+</div>
+
+<section style="margin-top: 42px">
+<h2 style="margin: 0 0 12px; font: 500 10.5px/1 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.18em; text-transform: uppercase; color: #85857F">Track details</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid rgba(244, 243, 239, 0.1); border-bottom: 1px solid rgba(244, 243, 239, 0.1)">
+<div style="padding: 14px 0; display: flex; flex-direction: column; gap: 9px"><span style="font: 500 10.5px/1 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #85857F">BPM</span><span style="font: 600 28px/1 'Familjen Grotesk', 'Helvetica Neue', Arial, sans-serif; letter-spacing: -0.01em">{{t.bpm}}</span></div>
+<div style="padding: 14px 0 14px 16px; border-left: 1px solid rgba(244, 243, 239, 0.1); display: flex; flex-direction: column; gap: 9px"><span style="font: 500 10.5px/1 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #85857F">Length</span><span style="font: 600 28px/1 'Familjen Grotesk', 'Helvetica Neue', Arial, sans-serif; letter-spacing: -0.01em">{{t.len}}</span></div>
+</div>
+<sc-if value="{{t.hasTags}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; gap: 12px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid rgba(244, 243, 239, 0.1)">
+<span style="width: 62px; flex: none; padding-top: 11px; font: 500 10.5px/1 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #85857F">Genres</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{t.genres}}" as="g" hint-placeholder-count="2"><span style="height: 32px; padding: 0 13px; display: inline-flex; align-items: center; border-radius: 999px; border: 1px solid rgba(244, 243, 239, 0.16); font: 500 13px/1 Inter, system-ui, sans-serif; color: #E6E5E0; white-space: nowrap">{{g.n}}</span></sc-for></div>
+</div>
+<div style="display: flex; gap: 12px; align-items: flex-start; padding: 14px 0; border-bottom: 1px solid rgba(244, 243, 239, 0.1)">
+<span style="width: 62px; flex: none; padding-top: 11px; font: 500 10.5px/1 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #85857F">Moods</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{t.moods}}" as="m" hint-placeholder-count="2"><span style="height: 32px; padding: 0 13px; display: inline-flex; align-items: center; border-radius: 999px; border: 1px solid rgba(244, 243, 239, 0.16); font: 500 13px/1 Inter, system-ui, sans-serif; color: #E6E5E0; white-space: nowrap">{{m.n}}</span></sc-for></div>
+</div>
+</sc-if>
+</section>
+
+<section style="margin-top: 44px">
+<h2 style="margin: 0 0 6px; font: 600 22px/1.1 'Familjen Grotesk', 'Helvetica Neue', Arial, sans-serif; letter-spacing: -0.01em">Similar tracks</h2>
+<ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column">
+<sc-for list="{{t.similar}}" as="s" hint-placeholder-count="5">
+<li style="border-bottom: 1px solid rgba(244, 243, 239, 0.07)">
+<button type="button" class="df-row" aria-label="{{s.label}}" onClick="{{s.open}}" style="width: 100%; display: flex; align-items: center; gap: 14px; padding: 10px 4px; border: 0; border-radius: 12px; background: transparent; text-align: left; cursor: pointer">
+<span class="{{s.cv}}" aria-hidden="true" style="display: block; width: 48px; height: 48px; flex: none; border-radius: 10px"><span class="s1"></span><span class="s2"></span><span class="s3"></span></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span class="df-rt" style="font: 600 15px/1.2 Inter, system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.title}}</span>
+<span style="font: 400 13px/1.2 Inter, system-ui, sans-serif; color: #A6A6A2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.artist}}</span>
+</span>
+<span style="font: 500 12px/1 'JetBrains Mono', ui-monospace, Menlo, monospace; color: #85857F">{{s.len}}</span>
+</button>
+</li>
+</sc-for>
+</ol>
+</section>
+
+</div>
+</article>
+</sc-for>
+</div>
+</div>
+</div>
+
+<div style="position: absolute; left: 0; right: 0; top: 52px; height: 48px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; z-index: 5">
+<button type="button" class="df-btn" aria-label="Back" onClick="{{goBack}}" style="width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(244, 243, 239, 0.12); background: rgba(18, 19, 22, 0.5); cursor: pointer"><svg class="df-ico" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"></path></svg></button>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 9px">
+<div style="display: flex; align-items: baseline; gap: 6px; font: 500 12px/1 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.08em"><span style="color: #F4F3EF">{{counter}}</span><span style="color: #85857F">/ {{total}}</span></div>
+<div style="position: relative; display: flex; gap: 6px; height: 4px">
+<sc-for list="{{dots}}" as="d" hint-placeholder-count="11"><span style="display: block; width: 4px; height: 4px; border-radius: 999px; background: rgba(244, 243, 239, 0.22)"></span></sc-for>
+<span class="df-thumb" ref="{{refThumb}}" data-df-thumb="" style="position: absolute; left: -5px; top: -1px; width: 14px; height: 6px; border-radius: 999px; background: var(--accent, #D7F25A)"></span>
+</div>
+</div>
+<button type="button" class="df-btn" aria-label="More options" style="width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(244, 243, 239, 0.12); background: rgba(18, 19, 22, 0.5); cursor: pointer"><svg class="df-ico-f" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="18.5" cy="12" r="1.7"></circle></svg></button>
+</div>
+
+<div class="{{hintCls}}" aria-hidden="true" style="position: absolute; left: 50%; bottom: 108px; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; background: rgba(22, 23, 27, 0.78); border: 1px solid rgba(244, 243, 239, 0.1); font: 500 11px/1 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.06em; color: #D6D5D0; white-space: nowrap; pointer-events: none; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px)">
+<svg class="df-ico" width="16" height="16" viewBox="0 0 24 24"><path d="M8 7.5 3.5 12 8 16.5M16 7.5l4.5 4.5-4.5 4.5M4 12h16"></path></svg>
+<span>Swipe sideways for similar tracks</span>
+</div>
+
+<div style="position: absolute; left: 12px; right: 12px; bottom: 28px; height: 64px; z-index: 5; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; border-radius: 20px; background: rgba(24, 25, 29, 0.62); border: 1px solid rgba(244, 243, 239, 0.09); backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%); box-shadow: 0 18px 40px -14px rgba(0, 0, 0, 0.75); overflow: hidden">
+<button type="button" aria-label="{{mini.openLabel}}" onClick="{{mini.open}}" style="flex: 1; min-width: 0; height: 52px; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer">
+<span class="{{mini.cv}}" aria-hidden="true" style="display: block; width: 44px; height: 44px; flex: none; border-radius: 10px"><span class="s1"></span><span class="s2"></span><span class="s3"></span></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="font: 600 14px/1.2 Inter, system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{mini.title}}</span>
+<span style="font: 400 12px/1.2 Inter, system-ui, sans-serif; color: #A6A6A2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{mini.artist}}</span>
+</span>
+</button>
+<button type="button" class="df-btn" aria-label="{{mini.label}}" onClick="{{mini.toggle}}" style="width: 44px; height: 44px; flex: none; border-radius: 999px; display: grid; place-items: center; padding: 0; border: 0; background: transparent; cursor: pointer">
+<sc-if value="{{mini.playing}}" hint-placeholder-val="{{ false }}"><svg class="df-ico-f" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2"></rect><rect x="13.5" y="5" width="4" height="14" rx="1.2"></rect></svg></sc-if>
+<sc-if value="{{mini.paused}}" hint-placeholder-val="{{ true }}"><svg class="df-ico-f" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.2v13.6a.9.9 0 0 0 1.38.76l10.4-6.8a.9.9 0 0 0 0-1.52L9.38 4.44A.9.9 0 0 0 8 5.2z"></path></svg></sc-if>
+</button>
+<span ref="{{refBar}}" data-df-bar="" aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent, #D7F25A); transform-origin: 0 50%; transform: scaleX(0)"></span>
+</div>
+
+</div>
+</template>
+<script>
+
+// Minimal runtime for the artboard's template: {{holes}}, <sc-for>, <sc-if>, refs, events.
+class DCLogic {
+  constructor(props) { this.props = props || {}; }
+  setState(u) {
+    const patch = typeof u === 'function' ? u(this.state, this.props) : u;
+    if (!patch) return;
+    this.state = Object.assign({}, this.state, patch);
+    if (this.__dcUpdate) this.__dcUpdate();
+  }
+  forceUpdate() { if (this.__dcUpdate) this.__dcUpdate(); }
+}
+const DC = (() => {
+  const HOLE = /\{\{([^}]+)\}\}/g;
+  const whole = (s) => { const m = /^\s*\{\{([^}]+)\}\}\s*$/.exec(s || ''); return m ? m[1].trim() : null; };
+  function resolveName(name, scope, root) {
+    for (let s = scope; s; s = s.parent) {
+      if (name === '$index') return s.index;
+      if (s.name === name) { const list = lookup(s.listExpr, s.parent, root); return list ? list[s.index] : undefined; }
+    }
+    return root[name];
+  }
+  function lookup(path, scope, root) {
+    path = path.trim();
+    if (path === 'true') return true;
+    if (path === 'false') return false;
+    if (/^-?\d+(\.\d+)?$/.test(path)) return Number(path);
+    const parts = path.split('.');
+    let v = resolveName(parts[0], scope, root);
+    for (let i = 1; i < parts.length; i++) { if (v == null) return undefined; v = v[parts[i]]; }
+    return v;
+  }
+  const interp = (tpl, scope, root) => tpl.replace(HOLE, (_, p) => { const v = lookup(p, scope, root); return v == null ? '' : String(v); });
+  function apply(b, vals) {
+    if (b.kind === 'text') { const v = interp(b.tpl, b.scope, vals); if (b.last !== v) { b.last = v; b.node.nodeValue = v; } }
+    else if (b.kind === 'attr') { const v = interp(b.tpl, b.scope, vals); if (b.last !== v) { b.last = v; b.node.setAttribute(b.name, v); } }
+    else { const d = lookup(b.expr, b.scope, vals) ? 'contents' : 'none'; if (b.last !== d) { b.last = d; b.node.style.display = d; } }
+  }
+  function render(node, scope, ctx, out) {
+    if (node.nodeType === 3) {
+      const t = document.createTextNode(node.nodeValue);
+      if (node.nodeValue.indexOf('{{') >= 0) { const b = { kind: 'text', node: t, tpl: node.nodeValue, scope }; ctx.bindings.push(b); apply(b, ctx.vals); }
+      out.appendChild(t);
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    const tag = node.localName;
+    if (tag === 'sc-for') {
+      const listExpr = whole(node.getAttribute('list'));
+      const as = node.getAttribute('as');
+      const list = lookup(listExpr, scope, ctx.vals) || [];
+      for (let k = 0; k < list.length; k++) {
+        const sc = { parent: scope, name: as, listExpr: listExpr, index: k };
+        node.childNodes.forEach((c) => render(c, sc, ctx, out));
+      }
+      return;
+    }
+    if (tag === 'sc-if') {
+      const w = document.createElement('span');
+      const b = { kind: 'if', node: w, expr: whole(node.getAttribute('value')), scope };
+      ctx.bindings.push(b); apply(b, ctx.vals);
+      node.childNodes.forEach((c) => render(c, scope, ctx, w));
+      out.appendChild(w);
+      return;
+    }
+    const el = document.createElementNS(node.namespaceURI, tag);
+    for (const a of Array.from(node.attributes)) {
+      const expr = whole(a.value);
+      if (a.name === 'ref') { ctx.refs.push([lookup(expr, scope, ctx.vals), el]); continue; }
+      if (a.name.slice(0, 2) === 'on' && expr) {
+        el.addEventListener(a.name.slice(2).toLowerCase(), (e) => { const fn = lookup(expr, scope, ctx.vals); if (typeof fn === 'function') fn(e); });
+        continue;
+      }
+      if (a.value.indexOf('{{') >= 0) { const b = { kind: 'attr', node: el, name: a.name, tpl: a.value, scope }; ctx.bindings.push(b); apply(b, ctx.vals); }
+      else el.setAttribute(a.name, a.value);
+    }
+    node.childNodes.forEach((c) => render(c, scope, ctx, el));
+    out.appendChild(el);
+  }
+  function mount(Component, host, tpl, props) {
+    const comp = new Component(props);
+    const ctx = { bindings: [], refs: [], vals: comp.renderVals() };
+    const frag = document.createDocumentFragment();
+    tpl.content.childNodes.forEach((c) => render(c, null, ctx, frag));
+    host.appendChild(frag);
+    ctx.refs.forEach(([fn, el]) => { if (typeof fn === 'function') fn(el); });
+    comp.__dcUpdate = () => {
+      ctx.vals = comp.renderVals();
+      ctx.bindings.forEach((b) => apply(b, ctx.vals));
+      if (comp.componentDidUpdate) comp.componentDidUpdate();
+    };
+    if (comp.componentDidMount) comp.componentDidMount();
+    return comp;
+  }
+  return { mount };
+})();
+
+class Component extends DCLogic {
+  constructor(...args) {
+    super(...args);
+    this.dfInit();
+    this.state = { index: 0, current: 0, playing: false, sec: 0, liked: {}, hint: true };
+  }
+
+  dfInit() {
+    if (this.tracks) return;
+    this.tracks = this.makeTracks();
+    this.W = 390;
+    this.p = 0;
+    this.index = 0;
+    this.target = null;
+    this.pageEls = [];
+    this.waveEls = [];
+    this.vis = [];
+    this.raf = 0;
+    this.playRaf = 0;
+    this.lastT = 0;
+    this.elapsed = 0;
+    this.lastWave = -1;
+    this.drag = null;
+    this.fingers = 0;
+    this.snapOff = false;
+    this.lastScroll = 0;
+    this.previewing = false;
+    this.peekAnim = null;
+    this.suppressUntil = 0;
+    this.interacted = false;
+    this.sup = false;
+    this.supThumb = false;
+    this.bound = null;
+    this.refRoot = (el) => { this.root = el; };
+    this.refDeck = (el) => { this.deck = el; };
+    this.refThumb = (el) => { this.thumb = el; };
+    this.refBar = (el) => { this.bar = el; };
+    this.pageRefs = this.tracks.map((_, i) => (el) => { this.pageEls[i] = el; });
+    this.waveRefs = this.tracks.map((_, i) => (el) => { this.waveEls[i] = el; });
+    this.openFns = this.tracks.map((_, i) => () => this.go(i));
+    this.toggleFns = this.tracks.map((_, i) => () => this.togglePlay(i));
+    this.likeFns = this.tracks.map((t) => () => this.setState((s) => {
+      const liked = Object.assign({}, (s && s.liked) || {});
+      liked[t.id] = !liked[t.id];
+      return { liked: liked };
+    }));
+    this.goBack = () => this.go(this.navIndex() - 1);
+    this.miniToggle = () => this.togglePlay(this.st().current);
+    this.miniOpen = () => {
+      const i = this.st().current;
+      const el = this.pageEls[i];
+      if (el && i === this.navIndex()) {
+        if (el.scrollTo) el.scrollTo({ top: 0, behavior: 'smooth' });
+        else el.scrollTop = 0;
+        return;
+      }
+      if (el) el.scrollTop = 0;
+      this.go(i);
+    };
+    ['frame', 'playTick', 'onScroll', 'onScrollEnd', 'onDown', 'onMove', 'onUp', 'onKey', 'onClickCapture', 'onInput', 'onTouch'].forEach((k) => {
+      this[k] = this[k].bind(this);
+    });
+  }
+
+  st() {
+    return Object.assign({ index: 0, current: 0, playing: false, sec: 0, liked: {}, hint: true }, this.state || {});
+  }
+
+  makeTracks() {
+    const rows = [
+      ['ice3', 'Ice Breaking 3', 'Jan Nordbring', '2:27', null, [], [], 'arc'],
+      ['telegram', 'Telegram', 'Benjamin Monday', '2:12', 127, ['Beautiful', 'Main Title'], ['Euphoric', 'Happy'], 'build'],
+      ['sosso', 'Sosso', 'Magnus Ludvigsson', '4:06', 138, ['Drama', 'Orchestral'], ['Changing Tempo', 'Epic'], 'swell'],
+      ['ice2', 'Ice Breaking 2', 'Jan Nordbring', '2:08', 106, ['Contemporary Classical', 'Drama'], ['Dreamy', 'Hopeful'], 'arc'],
+      ['cipher', 'The Cipher', 'Christoffer Moe Ditlevsen', '2:12', 130, ['Drama'], ['Dreamy', 'Peaceful'], 'pulse'],
+      ['astonish', 'Astonish', 'Million Eyes', '2:42', 115, ['Beautiful', 'Build'], ['Euphoric', 'Hopeful'], 'build'],
+      ['whisper', 'The Life of a Whisper', 'Jay Taylor', '3:26', null, ['Acoustic', 'Contemporary Classical'], ['Peaceful', 'Sad'], 'flat'],
+      ['promising', 'The Promising', 'Howard Harper-Barnes', '2:03', 135, ['Beautiful', 'Pulses'], ['Happy', 'Peaceful'], 'pulse'],
+      ['zones', 'Time Zones', 'Gavin Luke', '2:15', 125, ['Beautiful', 'Nostalgia'], ['Dreamy', 'Floating'], 'arc'],
+      ['meyou', 'Me and You, You and I', 'Leimoti', '2:11', 108, ['Beautiful', 'Main Title'], ['Euphoric', 'Romantic'], 'build'],
+      ['home', 'Longing for Home', 'Christoffer Moe Ditlevsen', '2:09', 110, ['Build', 'Contemporary Classical'], ['Epic', 'Hopeful'], 'swell']
+    ];
+    return rows.map((r) => {
+      const parts = r[3].split(':');
+      return {
+        id: r[0],
+        title: r[1],
+        artist: r[2],
+        len: r[3],
+        dur: Number(parts[0]) * 60 + Number(parts[1]),
+        bpm: r[4] == null ? '—' : String(r[4]),
+        genres: r[5].map((n) => ({ n: n })),
+        moods: r[6].map((n) => ({ n: n })),
+        hasTags: r[5].length > 0,
+        cv: 'cv-' + r[0],
+        wave: this.wavePath(r[0], r[7])
+      };
+    });
+  }
+
+  wavePath(id, shape) {
+    let h = 2166136261;
+    for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    let r = h || 1;
+    const rnd = () => { r ^= r << 13; r >>>= 0; r ^= r >>> 17; r ^= r << 5; r >>>= 0; return r / 4294967296; };
+    const n = 46;
+    const H = 40;
+    let d = '';
+    for (let i = 0; i < n; i++) {
+      const u = i / (n - 1);
+      let env;
+      if (shape === 'build') env = (0.22 + 0.78 * Math.pow(u, 0.8)) * (u > 0.92 ? 1 - (u - 0.92) * 6 : 1);
+      else if (shape === 'swell') env = (0.3 + 0.7 * (0.5 - 0.5 * Math.cos(u * Math.PI * 3))) * (0.6 + 0.4 * u);
+      else if (shape === 'pulse') env = 0.45 + 0.4 * Math.abs(Math.sin(u * Math.PI * 5));
+      else if (shape === 'flat') env = 0.35 + 0.22 * Math.sin(u * Math.PI);
+      else env = 0.28 + 0.72 * Math.sin(Math.PI * u);
+      const a = Math.max(0.1, Math.min(1, env * (0.6 + 0.4 * rnd())));
+      const len = a * (H - 8);
+      const x = 3 + i * 6;
+      const y1 = (H - len) / 2;
+      d += 'M' + x + ' ' + y1.toFixed(1) + 'V' + (y1 + len).toFixed(1);
+    }
+    return d;
+  }
+
+  fmt(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  num(v, d) {
+    const n = typeof v === 'string' ? parseFloat(v) : v;
+    return typeof n === 'number' && isFinite(n) ? n : d;
+  }
+
+  vars() {
+    const pr = this.props || {};
+    return {
+      accent: typeof pr.accent === 'string' && pr.accent ? pr.accent : '#D7F25A',
+      blur: this.num(pr.exitBlur, 40),
+      scale: this.num(pr.exitScale, 0.88),
+      drop: this.num(pr.exitDrop, 28),
+      ghost: this.num(pr.ghost, 0.5)
+    };
+  }
+
+  renderVals() {
+    this.dfInit();
+    const s = this.st();
+    const T = this.tracks;
+    const N = T.length;
+    const pad = (n) => (n < 10 ? '0' : '') + n;
+    const pages = T.map((t, i) => {
+      const playing = s.current === i && s.playing;
+      const liked = !!(s.liked && s.liked[t.id]);
+      const similar = [];
+      for (let k = 1; k <= 5; k++) {
+        const j = (i + k) % N;
+        const u = T[j];
+        similar.push({
+          title: u.title,
+          artist: u.artist,
+          len: u.len,
+          cv: 'df-cv ' + u.cv,
+          open: this.openFns[j],
+          label: 'Open ' + u.title + ' by ' + u.artist
+        });
+      }
+      return {
+        title: t.title,
+        artist: t.artist,
+        len: t.len,
+        bpm: t.bpm,
+        genres: t.genres,
+        moods: t.moods,
+        hasTags: t.hasTags,
+        wave: t.wave,
+        // the sink animation of page i runs while the deck scrolls from page i to page i + 2
+        range: ((100 * i) / (N - 1)).toFixed(4) + '% ' + ((100 * (i + 2)) / (N - 1)).toFixed(4) + '%',
+        snapLeft: i * 390 + 'px',
+        coverCls: 'df-cv ' + t.cv,
+        coverAlt: 'Cover art for ' + t.title,
+        aria: t.title + ' by ' + t.artist,
+        vlabel: 'No.' + pad(i + 1),
+        ref: this.pageRefs[i],
+        waveRef: this.waveRefs[i],
+        playing: playing,
+        paused: !playing,
+        playLabel: (playing ? 'Pause ' : 'Play ') + t.title,
+        toggle: this.toggleFns[i],
+        likeCls: liked ? 'df-btn df-like on' : 'df-btn df-like',
+        likeLabel: (liked ? 'Unlike ' : 'Like ') + t.title,
+        likedStr: liked ? 'true' : 'false',
+        like: this.likeFns[i],
+        elapsed: s.current === i ? this.fmt(s.sec) : '0:00',
+        similar: similar
+      };
+    });
+    const cur = T[s.current] || T[0];
+    return {
+      pages: pages,
+      trackW: N * 390 + 'px',
+      refRoot: this.refRoot,
+      refDeck: this.refDeck,
+      refThumb: this.refThumb,
+      refBar: this.refBar,
+      counter: pad(s.index + 1),
+      total: pad(N),
+      dots: T.map((t) => ({ id: t.id })),
+      goBack: this.goBack,
+      hintCls: s.hint ? 'df-hint' : 'df-hint hide',
+      mini: {
+        title: cur.title,
+        artist: cur.artist,
+        cv: 'df-cv ' + cur.cv,
+        playing: s.playing,
+        paused: !s.playing,
+        label: (s.playing ? 'Pause ' : 'Play ') + cur.title,
+        toggle: this.miniToggle,
+        open: this.miniOpen,
+        openLabel: 'Show ' + cur.title
+      }
+    };
+  }
+
+  componentDidMount() {
+    this.resolve();
+    const tl = typeof CSS !== 'undefined' && !!CSS.supports && CSS.supports('animation-timeline: scroll()');
+    const forceJs = typeof window !== 'undefined' && !!window.__DF_FORCE_JS;
+    this.sup = tl && !forceJs;
+    this.supThumb = this.sup && CSS.supports('timeline-scope: --a');
+    if (this.root && this.root.classList) {
+      this.root.classList.toggle('df-js', !this.sup);
+      this.root.classList.toggle('df-js-thumb', !this.supThumb);
+    }
+    this.bindEvents();
+    this.applyVars();
+    if (this.deck) {
+      this.W = this.deck.clientWidth || 390;
+      this.p = this.deck.scrollLeft / this.W;
+    }
+    this.paint();
+    this.paintProgress();
+    clearTimeout(this.peekTimer);
+    this.peekTimer = setTimeout(() => this.peek(), 1000);
+    clearTimeout(this.hintTimer);
+    this.hintTimer = setTimeout(() => this.hideHint(), 6500);
+  }
+
+  componentDidUpdate() {
+    this.resolve();
+    const b = this.bound;
+    if (!b || b.d !== this.deck || b.r !== this.root) this.bindEvents();
+    this.applyVars();
+    this.paint();
+    this.paintProgress();
+  }
+
+  componentWillUnmount() {
+    this.unbindEvents();
+    if (this.raf) cancelAnimationFrame(this.raf);
+    if (this.playRaf) cancelAnimationFrame(this.playRaf);
+    this.raf = 0;
+    this.playRaf = 0;
+    this.peekAnim = null;
+    clearTimeout(this.peekTimer);
+    clearTimeout(this.hintTimer);
+    clearTimeout(this.idleT);
+    clearTimeout(this.previewT);
+  }
+
+  resolve() {
+    if (!this.root && typeof document !== 'undefined') this.root = document.querySelector('[data-df-root]');
+    const r = this.root;
+    if (!r) return;
+    if (!this.deck) this.deck = r.querySelector('[data-df-deck]');
+    if (!this.thumb) this.thumb = r.querySelector('[data-df-thumb]');
+    if (!this.bar) this.bar = r.querySelector('[data-df-bar]');
+    const N = this.tracks.length;
+    let havePages = 0;
+    let haveWaves = 0;
+    for (let i = 0; i < N; i++) {
+      if (this.pageEls[i]) havePages++;
+      if (this.waveEls[i]) haveWaves++;
+    }
+    if (havePages < N) {
+      const ps = r.querySelectorAll('[data-df-page]');
+      if (ps.length === N) for (let i = 0; i < N; i++) this.pageEls[i] = ps[i];
+    }
+    if (haveWaves < N) {
+      const ws = r.querySelectorAll('[data-df-wave]');
+      if (ws.length === N) for (let i = 0; i < N; i++) this.waveEls[i] = ws[i];
+    }
+  }
+
+  bindEvents() {
+    this.unbindEvents();
+    const d = this.deck;
+    const r = this.root;
+    if (d) {
+      d.addEventListener('scroll', this.onScroll, { passive: true });
+      d.addEventListener('scrollend', this.onScrollEnd);
+      d.addEventListener('pointerdown', this.onDown);
+      d.addEventListener('pointermove', this.onMove);
+      d.addEventListener('pointerup', this.onUp);
+      d.addEventListener('pointercancel', this.onUp);
+      d.addEventListener('wheel', this.onInput, { passive: true });
+      d.addEventListener('touchstart', this.onTouch, { passive: true });
+      d.addEventListener('touchend', this.onTouch, { passive: true });
+      d.addEventListener('touchcancel', this.onTouch, { passive: true });
+      d.addEventListener('click', this.onClickCapture, true);
+    }
+    if (r) r.addEventListener('keydown', this.onKey);
+    this.bound = { d: d, r: r };
+  }
+
+  unbindEvents() {
+    const b = this.bound;
+    if (!b) return;
+    if (b.d) {
+      b.d.removeEventListener('scroll', this.onScroll);
+      b.d.removeEventListener('scrollend', this.onScrollEnd);
+      b.d.removeEventListener('pointerdown', this.onDown);
+      b.d.removeEventListener('pointermove', this.onMove);
+      b.d.removeEventListener('pointerup', this.onUp);
+      b.d.removeEventListener('pointercancel', this.onUp);
+      b.d.removeEventListener('wheel', this.onInput);
+      b.d.removeEventListener('touchstart', this.onTouch);
+      b.d.removeEventListener('touchend', this.onTouch);
+      b.d.removeEventListener('touchcancel', this.onTouch);
+      b.d.removeEventListener('click', this.onClickCapture, true);
+    }
+    if (b.r) b.r.removeEventListener('keydown', this.onKey);
+    this.bound = null;
+  }
+
+  applyVars() {
+    const r = this.root;
+    if (!r || !r.style) return;
+    const v = this.vars();
+    const set = (k, val) => { if (r.style.getPropertyValue(k) !== val) r.style.setProperty(k, val); };
+    set('--accent', v.accent);
+    set('--sink-blur', v.blur + 'px');
+    set('--sink-scale', String(v.scale));
+    set('--sink-drop', v.drop + 'px');
+    set('--ghost', String(v.ghost));
+  }
+
+  // ---- paging: native scrolling, this only reads the position ----
+
+  onScroll() {
+    const d = this.deck;
+    if (!d) return;
+    this.p = d.scrollLeft / this.W;
+    this.lastScroll = performance.now();
+    if (this.interacted && !this.peekAnim && !this.previewing && Math.abs(this.p - this.index) > 0.05) this.hideHint();
+    if (!this.raf) this.raf = requestAnimationFrame(this.frame);
+    this.armIdle();
+  }
+
+  frame() {
+    this.raf = 0;
+    this.paint();
+  }
+
+  armIdle() {
+    clearTimeout(this.idleT);
+    this.idleT = setTimeout(() => this.onScrollEnd(), 140);
+  }
+
+  // Pages more than one step behind are hidden; pages ahead start at the top.
+  // Without scroll timelines the sink effect is written here too.
+  paint() {
+    const N = this.tracks.length;
+    const p = this.p;
+    for (let i = 0; i < N; i++) {
+      const el = this.pageEls[i];
+      if (!el || !el.style) continue;
+      const k = p - i;
+      const vis = k < 1.999;
+      if (vis !== this.vis[i]) {
+        this.vis[i] = vis;
+        el.style.visibility = vis ? '' : 'hidden';
+      }
+      if (k <= -0.999 && el.scrollTop) el.scrollTop = 0;
+      if (!this.sup) this.sinkStyle(el, k);
+    }
+    if (this.thumb && this.thumb.style && !this.supThumb) {
+      this.thumb.style.transform = 'translateX(' + (Math.max(0, Math.min(N - 1, p)) * 10).toFixed(2) + 'px)';
+    }
+  }
+
+  sinkStyle(el, k) {
+    const s = el.style;
+    if (k <= 0.0001) {
+      if (s.opacity !== '1') {
+        s.transform = 'none';
+        s.filter = 'none';
+        s.opacity = '1';
+      }
+      return;
+    }
+    const v = this.vars();
+    let ty;
+    let sc;
+    let bl;
+    let br;
+    let op;
+    if (k < 1) {
+      const e = 1 - (1 - k) * (1 - k);
+      ty = v.drop * e;
+      sc = 1 - (1 - v.scale) * e;
+      bl = v.blur * e;
+      br = 1 - 0.3 * e;
+      op = 1 - (1 - v.ghost) * e;
+    } else {
+      const u = Math.min(1, k - 1);
+      ty = v.drop * (1 + 0.5 * u);
+      sc = v.scale - 0.05 * u;
+      bl = v.blur * (1 + 0.3 * u);
+      br = 0.7 - 0.15 * u;
+      op = v.ghost * (1 - u);
+    }
+    s.transform = 'translate3d(0,' + ty.toFixed(2) + 'px,0) scale(' + sc.toFixed(4) + ')';
+    s.filter = 'blur(' + bl.toFixed(2) + 'px) brightness(' + br.toFixed(3) + ')';
+    s.opacity = op.toFixed(3);
+  }
+
+  onScrollEnd() {
+    clearTimeout(this.idleT);
+    const d = this.deck;
+    if (!d || this.drag || this.peekAnim || this.previewing || this.fingers) return;
+    const N = this.tracks.length;
+    const p = d.scrollLeft / this.W;
+    const i = Math.max(0, Math.min(N - 1, Math.round(p)));
+    const wasOff = this.snapOff;
+    if (wasOff) {
+      this.snapOff = false;
+      d.style.scrollSnapType = '';
+    }
+    if (Math.abs(p - i) > 0.01) {
+      // Between pages. Normally the browser is still snapping: leave it alone. Finish the move
+      // ourselves only if we had turned snapping off, or if nothing has moved for a while.
+      if (wasOff || performance.now() - this.lastScroll > 450) d.scrollTo({ left: i * this.W, behavior: 'smooth' });
+      else this.idleT = setTimeout(() => this.onScrollEnd(), 320);
+      return;
+    }
+    this.p = i;
+    this.target = null;
+    this.paint();
+    if (i !== this.index || this.st().index !== i) {
+      this.index = i;
+      this.setState({ index: i });
+    }
+  }
+
+  onInput() {
+    this.interacted = true;
+    this.stopPeek();
+  }
+
+  onTouch(e) {
+    this.fingers = e.touches ? e.touches.length : 0;
+    if (e.type === 'touchstart') this.onInput();
+    else if (!this.fingers) this.armIdle();
+  }
+
+  navIndex() {
+    return this.target != null ? this.target : this.index;
+  }
+
+  go(i) {
+    const N = this.tracks.length;
+    const d = this.deck;
+    if (!d || this.drag) return;
+    this.onInput();
+    if (i < 0 || i > N - 1) {
+      this.bump(i < 0 ? 1 : -1);
+      return;
+    }
+    this.hideHint();
+    clearTimeout(this.previewT);
+    this.previewing = false;
+    const cur = Math.round(this.p);
+    if (i === cur && Math.abs(this.p - cur) < 0.01) {
+      this.target = null;
+      return;
+    }
+    const el = this.pageEls[i];
+    if (el && i > cur + 1) el.scrollTop = 0;
+    this.target = i;
+    d.scrollTo({ left: i * this.W, behavior: 'smooth' });
+  }
+
+  bump(dir) {
+    const el = this.pageEls[this.index];
+    if (!el || !el.animate) return;
+    el.animate(
+      [{ transform: 'translateX(0px)' }, { transform: 'translateX(' + dir * 16 + 'px)' }, { transform: 'translateX(0px)' }],
+      { duration: 340, easing: 'ease-out' }
+    );
+  }
+
+  peek() {
+    const d = this.deck;
+    if (this.interacted || this.index !== 0 || !d || this.fingers) return;
+    this.snapOff = true;
+    d.style.scrollSnapType = 'none';
+    const a = { t0: performance.now(), dur: 1150, amp: 0.17 * this.W };
+    this.peekAnim = a;
+    const step = (now) => {
+      if (this.peekAnim !== a) return;
+      const k = Math.min(1, Math.max(0, (now - a.t0) / a.dur));
+      const sn = Math.sin(Math.PI * k);
+      d.scrollLeft = a.amp * sn * sn * (3 - 2 * sn);
+      if (k < 1) requestAnimationFrame(step);
+      else this.stopPeek();
+    };
+    requestAnimationFrame(step);
+  }
+
+  stopPeek() {
+    clearTimeout(this.peekTimer);
+    if (!this.peekAnim) return;
+    this.peekAnim = null;
+    const d = this.deck;
+    if (d) {
+      this.snapOff = false;
+      d.style.scrollSnapType = '';
+    }
+    this.armIdle();
+  }
+
+  // Freeze the deck part-way through a page turn for a moment (used by the motion sliders).
+  previewHalf() {
+    const d = this.deck;
+    if (!d || this.drag) return;
+    const N = this.tracks.length;
+    this.stopPeek();
+    this.interacted = true;
+    const base = this.index;
+    this.previewing = true;
+    this.snapOff = true;
+    d.style.scrollSnapType = 'none';
+    d.scrollLeft = (base < N - 1 ? base + 0.6 : base - 0.4) * this.W;
+    clearTimeout(this.previewT);
+    this.previewT = setTimeout(() => {
+      this.previewing = false;
+      this.target = base;
+      d.scrollTo({ left: base * this.W, behavior: 'smooth' });
+    }, 700);
+  }
+
+  hideHint() {
+    if (this.st().hint) this.setState({ hint: false });
+  }
+
+  iw() {
+    const r = this.deck && this.deck.getBoundingClientRect ? this.deck.getBoundingClientRect() : null;
+    return (r && r.width) || this.W || 390;
+  }
+
+  velocity(sm, tUp) {
+    if (!sm || sm.length < 2) return 0;
+    const last = sm[sm.length - 1];
+    if (tUp - last.t > 90) return 0;
+    let first = last;
+    for (let i = sm.length - 2; i >= 0; i--) {
+      if (last.t - sm[i].t > 110) break;
+      first = sm[i];
+    }
+    const dt = last.t - first.t;
+    if (dt < 8) return 0;
+    return (last.x - first.x) / dt;
+  }
+
+  // Touch, pen and trackpad use native scrolling. A mouse cannot drag a scroller, so a mouse
+  // drag moves the deck by hand and hands the rest back to a smooth scroll.
+  onDown(e) {
+    this.onInput();
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !this.deck) return;
+    this.drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, s0: this.deck.scrollLeft, w: this.iw(), axis: null, sm: [{ t: e.timeStamp, x: e.clientX }] };
+  }
+
+  onMove(e) {
+    const g = this.drag;
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x0;
+    const dy = e.clientY - g.y0;
+    if (!g.axis) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      g.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (g.axis !== 'x') {
+        this.drag = null;
+        return;
+      }
+      try { this.deck.setPointerCapture(g.id); } catch (err) { /* ignore */ }
+      this.snapOff = true;
+      this.deck.style.scrollSnapType = 'none';
+      this.hideHint();
+    }
+    g.sm.push({ t: e.timeStamp, x: e.clientX });
+    if (g.sm.length > 8) g.sm.shift();
+    if (e.cancelable) e.preventDefault();
+    this.deck.scrollLeft = g.s0 - (dx * this.W) / g.w;
+  }
+
+  onUp(e) {
+    const g = this.drag;
+    if (!g || e.pointerId !== g.id) return;
+    this.drag = null;
+    try { this.deck.releasePointerCapture(g.id); } catch (err) { /* ignore */ }
+    if (g.axis !== 'x') return;
+    this.suppressUntil = performance.now() + 350;
+    const v = e.type === 'pointercancel' ? 0 : this.velocity(g.sm, e.timeStamp);
+    const N = this.tracks.length;
+    const p = this.deck.scrollLeft / this.W;
+    const base = Math.round(g.s0 / this.W);
+    let t;
+    if (v < -0.25) t = Math.floor(p + 0.0001) + 1;
+    else if (v > 0.25) t = Math.ceil(p - 0.0001) - 1;
+    else t = Math.round(p);
+    t = Math.max(base - 1, Math.min(base + 1, t));
+    t = Math.max(0, Math.min(N - 1, t));
+    this.target = t;
+    this.deck.scrollTo({ left: t * this.W, behavior: 'smooth' });
+  }
+
+  onClickCapture(e) {
+    if (performance.now() < this.suppressUntil) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }
+
+  onKey(e) {
+    const k = e.key;
+    this.stopPeek();
+    if (k === 'ArrowRight') { e.preventDefault(); this.go(this.navIndex() + 1); return; }
+    if (k === 'ArrowLeft') { e.preventDefault(); this.go(this.navIndex() - 1); return; }
+    if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'PageDown' || k === 'PageUp' || k === ' ') {
+      if (k === ' ' && e.target && e.target.tagName === 'BUTTON') return;
+      const el = this.pageEls[this.index];
+      if (!el) return;
+      e.preventDefault();
+      const amt = k === 'ArrowDown' || k === 'ArrowUp' ? 90 : el.clientHeight * 0.8;
+      const sign = k === 'ArrowUp' || k === 'PageUp' ? -1 : 1;
+      if (el.scrollBy) el.scrollBy({ top: sign * amt, behavior: 'smooth' });
+      else el.scrollTop += sign * amt;
+    }
+  }
+
+  // ---- playback (simulated) ----
+
+  togglePlay(i) {
+    const s = this.st();
+    if (s.current === i) {
+      this.setState({ playing: !s.playing });
+    } else {
+      this.elapsed = 0;
+      this.setState({ current: i, playing: true, sec: 0 });
+    }
+    if (!this.playRaf) {
+      this.lastT = 0;
+      this.playRaf = requestAnimationFrame(this.playTick);
+    }
+  }
+
+  playTick(now) {
+    this.playRaf = 0;
+    const s = this.st();
+    if (!s.playing) {
+      this.lastT = 0;
+      return;
+    }
+    const dt = this.lastT ? Math.min(0.1, (now - this.lastT) / 1000) : 0;
+    this.lastT = now;
+    const t = this.tracks[s.current];
+    this.elapsed += dt;
+    if (this.elapsed >= t.dur) {
+      this.elapsed = 0;
+      this.lastT = 0;
+      this.setState({ playing: false, sec: 0 });
+      this.paintProgress();
+      return;
+    }
+    const sec = Math.floor(this.elapsed);
+    if (sec !== s.sec) this.setState({ sec: sec });
+    this.paintProgress();
+    this.playRaf = requestAnimationFrame(this.playTick);
+  }
+
+  paintProgress() {
+    const cur = this.st().current;
+    const t = this.tracks[cur];
+    if (!t) return;
+    const f = Math.max(0, Math.min(1, this.elapsed / t.dur));
+    if (this.lastWave >= 0 && this.lastWave !== cur) {
+      const old = this.waveEls[this.lastWave];
+      if (old && old.style) old.style.clipPath = 'inset(0 100% 0 0)';
+    }
+    this.lastWave = cur;
+    const el = this.waveEls[cur];
+    if (el && el.style) el.style.clipPath = 'inset(0 ' + ((1 - f) * 100).toFixed(2) + '% 0 0)';
+    if (this.bar && this.bar.style) this.bar.style.transform = 'scaleX(' + f.toFixed(4) + ')';
+  }
+}
+
+const comp = DC.mount(Component, document.getElementById('device'), document.getElementById('dc-template'), {"exitBlur":40,"exitScale":0.88,"exitDrop":28,"ghost":0.5,"accent":"#D7F25A"});
+
+// Fit the 390×844 frame to the window.
+const frame = document.getElementById('frame');
+const device = document.getElementById('device');
+function fit() {
+  const narrow = innerWidth < 760;
+  document.body.classList.toggle('narrow', narrow);
+  const pad = narrow ? 0 : 56;
+  const side = narrow ? 0 : 316;
+  let s = Math.min((innerHeight - pad) / 844, (innerWidth - pad - side) / 390);
+  if (!narrow) s = Math.min(1, s);
+  frame.style.width = (390 * s).toFixed(1) + 'px';
+  frame.style.height = (844 * s).toFixed(1) + 'px';
+  device.style.transform = 'scale(' + s.toFixed(4) + ')';
+}
+addEventListener('resize', fit);
+fit();
+const app = device.querySelector('.df-app');
+if (app && !document.body.classList.contains('narrow')) app.focus({ preventScroll: true });
+
+// Motion controls. Moving a slider freezes the deck part-way through a page turn for a moment;
+// the residue slider shows the resting state when there is a previous page behind.
+document.querySelectorAll('[data-prop]').forEach((input) => {
+  const prop = input.dataset.prop;
+  const out = document.querySelector('[data-out="' + prop + '"]');
+  const unit = input.dataset.unit || '';
+  const show = () => { out.textContent = input.value + unit; };
+  show();
+  input.addEventListener('input', () => {
+    comp.props[prop] = Number(input.value);
+    comp.applyVars();
+    comp.paint();
+    show();
+    if (!(prop === 'ghost' && comp.index > 0)) comp.previewHalf();
+  });
+});
+document.querySelectorAll('[data-accent]').forEach((b) => {
+  b.addEventListener('click', () => {
+    comp.props.accent = b.dataset.accent;
+    comp.applyVars();
+    document.querySelectorAll('[data-accent]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  });
+});
+
+</script>
+</body>
+</html>
