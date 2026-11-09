@@ -18,10 +18,11 @@
 - 电脑：触控板左右滑、鼠标拖动或按 ← → 翻页；滚轮上下滚动当前页。
 - 点 Similar tracks 里的曲目会跳过去。底部迷你播放器可以播放和暂停（模拟播放，没有声音），点曲名回到正在播放的那一页。
 - 右侧滑杆可以调翻走那一页的模糊、缩放、下沉和残影浓度；拖动滑杆时会定格到翻页一半的画面。
-- 顶部可以切换模糊的驱动方式，对比流畅度（旁边显示每秒帧数和最长一帧的耗时，"自动翻页"可以不用手滑）：
-  - **滚动时间线**：CSS `animation-timeline` 按滚动位置驱动，默认方式。
-  - **JS 每帧改 blur**：滚动时 JS 每帧直接写 `filter: blur(Npx)`，页面有 `will-change`，是独立图层。
-  - **JS 改 blur · 无 will-change**：同上，但去掉 `will-change`，看不提升图层时会不会卡。
+- 顶部可以切换模糊的实现方式，对比流畅度（旁边显示每秒帧数和最长一帧的耗时，"自动翻页"可以不用手滑）：
+  - **CSS 时间线**：CSS `animation-timeline` 按滚动位置驱动 `filter: blur()`，默认方式。
+  - **JS·filter**：滚动时 JS 每帧直接写 `filter: blur(Npx)`，页面有 `will-change`，是独立图层。
+  - **JS·filter 无图层**：同上，但去掉 `will-change`。
+  - **JS·backdrop**：JS 每帧改一层毛玻璃的 `backdrop-filter` 半径。玻璃层夹在翻走的页和新页之间，所以背景圆环也会一起被糊。
 
 ## 实现要点
 
@@ -41,7 +42,7 @@
 | `tools/build.js` | 从 `canvas/Main.dc.html` 生成 `index.html` |
 | `tools/lint.py`、`tools/smoke.js` | 检查标签是否闭合、模板变量是否都能取到值 |
 | `tools/shoot.js` | 在无头 Chrome 里跑一遍触摸、滚轮、鼠标、键盘、跳转等操作并截图 |
-| `tools/modes.js` | 检查三种模糊驱动方式都能正确切换 |
+| `tools/modes.js` | 检查四种模糊实现方式都能正确切换 |
 
 ## 修改后重新生成
 

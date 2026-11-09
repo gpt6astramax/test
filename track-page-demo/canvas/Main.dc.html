@@ -27,6 +27,11 @@ html,body{overscroll-behavior:none}
 .df-page{position:-webkit-sticky;position:sticky;left:0;flex:0 0 390px;width:390px;height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:none;transform-origin:50% 46%;will-change:transform,filter,opacity}
 .df-page::-webkit-scrollbar{display:none}
 .df-nolayer .df-page{will-change:auto}
+/* backdrop mode: a glass layer between page i and page i + 1. Its sticky anchor sits at the right
+   edge of the screen, so the glass covers the screen once page i has started to leave. */
+.df-ga{position:-webkit-sticky;position:sticky;left:390px;flex:0 0 0px;width:0;height:100%;pointer-events:none}
+.df-glass{position:absolute;top:0;right:0;width:390px;height:100%;display:none}
+.df-bd .df-stage{-webkit-mask-image:none;mask-image:none}
 /* 0% → 50%: the page being left shrinks, sinks and blurs into the backdrop of the next page.
    50% → 100%: one more page on, that backdrop fades out. */
 @keyframes df-sink{
@@ -212,6 +217,7 @@ html,body{overscroll-behavior:none}
 
 </div>
 </article>
+<i class="df-ga" aria-hidden="true"><span class="df-glass" data-df-glass=""></span></i>
 </sc-for>
 </div>
 </div>
@@ -286,6 +292,7 @@ class Component extends DCLogic {
     this.supThumb = false;
     this.tl = false;
     this.mode = 'timeline';
+    this.glassEls = [];
     this.bound = null;
     this.refRoot = (el) => { this.root = el; };
     this.refDeck = (el) => { this.deck = el; };
@@ -537,6 +544,10 @@ class Component extends DCLogic {
       const ps = r.querySelectorAll('[data-df-page]');
       if (ps.length === N) for (let i = 0; i < N; i++) this.pageEls[i] = ps[i];
     }
+    if (this.glassEls.filter(Boolean).length < N) {
+      const gs = r.querySelectorAll('[data-df-glass]');
+      if (gs.length === N) for (let i = 0; i < N; i++) this.glassEls[i] = gs[i];
+    }
     if (haveWaves < N) {
       const ws = r.querySelectorAll('[data-df-wave]');
       if (ws.length === N) for (let i = 0; i < N; i++) this.waveEls[i] = ws[i];
@@ -585,7 +596,8 @@ class Component extends DCLogic {
   }
 
   // How the sink effect is drawn: 'timeline' (scroll-driven CSS animation), 'js' (JS writes
-  // filter: blur() every frame on pages promoted with will-change) or 'nolayer' (the same, without will-change).
+  // filter: blur() every frame on pages promoted with will-change), 'nolayer' (the same, without
+  // will-change) or 'backdrop' (JS writes the backdrop-filter of a glass layer every frame).
   setMode(mode, quiet) {
     if (mode === 'timeline' && !this.tl) mode = 'js';
     this.mode = mode;
@@ -595,8 +607,10 @@ class Component extends DCLogic {
       this.root.classList.toggle('df-js', !this.sup);
       this.root.classList.toggle('df-js-thumb', !this.supThumb);
       this.root.classList.toggle('df-nolayer', mode === 'nolayer');
+      this.root.classList.toggle('df-bd', mode === 'backdrop');
     }
     this.pageEls.forEach((el) => { if (el && el.style) { el.style.transform = ''; el.style.filter = ''; el.style.opacity = ''; } });
+    this.glassEls.forEach((g) => { if (g && g.style) { g.style.display = ''; g.style.backdropFilter = ''; g.style.webkitBackdropFilter = ''; } });
     if (!quiet) this.paint();
     return mode;
   }
@@ -650,15 +664,19 @@ class Component extends DCLogic {
         el.style.visibility = vis ? '' : 'hidden';
       }
       if (k <= -0.999 && el.scrollTop) el.scrollTop = 0;
-      if (!this.sup) this.sinkStyle(el, k);
+      if (!this.sup) this.sinkStyle(el, k, i);
     }
     if (this.thumb && this.thumb.style && !this.supThumb) {
       this.thumb.style.transform = 'translateX(' + (Math.max(0, Math.min(N - 1, p)) * 10).toFixed(2) + 'px)';
     }
   }
 
-  sinkStyle(el, k) {
+  sinkStyle(el, k, i) {
     const s = el.style;
+    const glass = this.mode === 'backdrop' ? this.glassEls[i] : null;
+    if (glass && glass.style && (k <= 0.0001 || k >= 1.999)) {
+      if (glass.style.display !== 'none') glass.style.display = 'none';
+    }
     if (k <= 0.0001) {
       if (s.opacity !== '1') {
         s.transform = 'none';
@@ -690,7 +708,17 @@ class Component extends DCLogic {
     }
     s.transform = 'translate3d(0,' + ty.toFixed(2) + 'px,0) scale(' + sc.toFixed(4) + ')';
     s.opacity = op.toFixed(3);
-    s.filter = 'blur(' + bl.toFixed(2) + 'px) brightness(' + br.toFixed(3) + ')';
+    const f = 'blur(' + bl.toFixed(2) + 'px) brightness(' + br.toFixed(3) + ')';
+    if (glass && glass.style) {
+      s.filter = 'none';
+      if (k < 1.999) {
+        glass.style.display = 'block';
+        glass.style.backdropFilter = f;
+        glass.style.webkitBackdropFilter = f;
+      }
+    } else {
+      s.filter = f;
+    }
   }
 
   onScrollEnd() {

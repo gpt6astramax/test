@@ -13,20 +13,22 @@ const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
   const box = await page.locator('#device').boundingBox();
   const state = () => page.evaluate(() => {
     const p = document.querySelectorAll('[data-df-page]')[0];
+    const g = document.querySelectorAll('[data-df-glass]')[0];
     const cs = getComputedStyle(p);
-    return { anim: cs.animationName, filter: cs.filter, opacity: +cs.opacity, willChange: cs.willChange };
+    return { anim: cs.animationName, filter: cs.filter, opacity: +cs.opacity, willChange: cs.willChange, glass: getComputedStyle(g).display, bd: g.style.backdropFilter || '' };
   });
-  for (const mode of ['timeline', 'js', 'nolayer']) {
+  for (const mode of ['timeline', 'js', 'nolayer', 'backdrop']) {
     await page.click('[data-mode="' + mode + '"]');
     await page.evaluate(() => { const d = document.querySelector('[data-df-deck]'); d.scrollTo({ left: 0 }); });
     await page.waitForTimeout(600);
     await page.mouse.move(box.x + 195, box.y + 400);
-    for (let i = 0; i < 8; i++) { await page.mouse.wheel(40, 0); await page.waitForTimeout(16); }
+    for (let i = 0; i < 5; i++) { await page.mouse.wheel(70, 0); await page.waitForTimeout(8); }
     await page.waitForTimeout(1000);
     const s = await state();
     const ok = mode === 'timeline' ? s.anim === 'df-sink' && /blur\(40px\)/.test(s.filter)
       : mode === 'js' ? s.anim === 'none' && /blur\(40px\)/.test(s.filter) && s.willChange !== 'auto'
-      : s.anim === 'none' && /blur\(40px\)/.test(s.filter) && s.willChange === 'auto';
+      : mode === 'nolayer' ? s.anim === 'none' && /blur\(40px\)/.test(s.filter) && s.willChange === 'auto'
+      : s.anim === 'none' && s.filter === 'none' && s.glass === 'block' && /blur\(40px\)/.test(s.bd);
     if (!ok) fails++;
     console.log((ok ? 'ok   ' : 'FAIL ') + mode, JSON.stringify(s));
     await page.evaluate(() => { const d = document.querySelector('[data-df-deck]'); d.style.scrollSnapType = 'none'; d.scrollLeft = 390 * 0.55; });

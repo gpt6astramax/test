@@ -240,7 +240,7 @@ ${css}
 </head>
 <body>
 <div class="modebar" id="modebar">
-<div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">滚动时间线</button><button type="button" data-mode="js">JS 每帧改 blur</button><button type="button" data-mode="nolayer">JS 改 blur · 无 will-change</button></div>
+<div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">CSS 时间线</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
 <button type="button" class="mb" id="auto" aria-pressed="false">自动翻页</button>
 <span class="fps" id="fps">— fps</span>
 </div>
