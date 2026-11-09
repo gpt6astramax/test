@@ -190,7 +190,22 @@ setInterval(() => {
   diagEl.innerHTML = '当前：<b>' + how[comp.mode] + '</b> · JS 写入 <b>' + w + '</b> 次/秒' +
     (comp.tl ? '' : ' · 此浏览器不支持滚动时间线，CSS 档会退回 JS');
 }, 1000);
-// Frame meter: frames in the last second and the longest gap between two frames.
+// Block the main thread for 3 s. Whatever keeps moving meanwhile runs off the main thread
+// (native scrolling, Core Animation); whatever freezes needs the main thread.
+const blockBtn = document.getElementById('block');
+blockBtn.addEventListener('click', () => {
+  blockBtn.disabled = true;
+  blockBtn.textContent = '阻塞中…';
+  requestAnimationFrame(() => setTimeout(() => {
+    const end = performance.now() + 3000;
+    while (performance.now() < end) { /* busy */ }
+    stamps = [];
+    blockBtn.disabled = false;
+    blockBtn.textContent = '阻塞主线程 3 秒';
+  }, 30));
+});
+// Frame meter (main thread only): rAF callbacks in the last second and the longest gap between two.
+// Compositor animations and native scrolling can run faster than this and are not counted.
 const fpsEl = document.getElementById('fps');
 let stamps = [];
 let lastShow = 0;
@@ -201,7 +216,7 @@ let lastShow = 0;
     lastShow = t;
     let worst = 0;
     for (let i = 1; i < stamps.length; i++) worst = Math.max(worst, stamps[i] - stamps[i - 1]);
-    fpsEl.innerHTML = '<b>' + (stamps.length - 1) + '</b> fps · 最长 <b class="' + (worst > 34 ? 'bad' : '') + '">' + Math.round(worst) + '</b>ms';
+    fpsEl.innerHTML = '主线程 <b>' + (stamps.length - 1) + '</b> fps · 最长 <b class="' + (worst > 34 ? 'bad' : '') + '">' + Math.round(worst) + '</b>ms';
   }
   requestAnimationFrame(meter);
 })(performance.now());
@@ -234,6 +249,7 @@ body{margin:0;background:#060607;color:#E9E8E3;font-family:Inter,system-ui,-appl
 .seg button[aria-pressed=true]{background:#E9E8E3;color:#0C0D0F}
 .mb{border:1px solid rgba(255,255,255,.12)}
 .mb[aria-pressed=true]{border-color:#D7F25A;color:#D7F25A}
+.mb:disabled{opacity:.6}
 .fps{font:500 12px/1 'JetBrains Mono',ui-monospace,Menlo,monospace;color:#E9E8E3;min-width:150px;text-align:center}
 .fps b{font-weight:500}.fps .bad{color:#FF8A5B}
 .diag{flex-basis:100%;text-align:center;font:500 11.5px/1.4 Inter,system-ui,sans-serif;color:#9A9994}
@@ -261,6 +277,7 @@ ${css}
 <div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">CSS 时间线</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
 <button type="button" class="mb" id="auto" aria-pressed="false">自动翻页</button>
 <button type="button" class="mb" id="stress" aria-pressed="false">持续改 blur</button>
+<button type="button" class="mb" id="block">阻塞主线程 3 秒</button>
 <span class="fps" id="fps">— fps</span>
 <span class="diag" id="diag"></span>
 </div>
