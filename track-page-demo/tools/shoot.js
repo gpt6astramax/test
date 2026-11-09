@@ -3,7 +3,8 @@
 // Usage: node tools/shoot.js index.html out-dir
 // Env: PLAYWRIGHT=path/to/playwright (default 'playwright'), CHROME=path/to/chrome (default: Playwright's Chromium)
 const path = require('path');
-const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+const pw = require(process.env.PLAYWRIGHT || 'playwright');
+const engine = process.env.BROWSER || 'chromium';   // chromium | webkit
 const file = 'file://' + path.resolve(process.argv[2]);
 const out = process.argv[3];
 const failures = [];
@@ -29,7 +30,7 @@ const pageStyle = (page, i) => page.evaluate((i) => {
 const deckLeft = (page) => page.evaluate(() => document.querySelector('[data-df-deck]').scrollLeft);
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined, args: ['--no-sandbox'] });
+  const browser = await pw[engine].launch(engine === 'chromium' ? { executablePath: process.env.CHROME || undefined, args: ['--no-sandbox'] } : {});
 
   // ---- desktop, scroll timelines ----
   {
@@ -96,8 +97,8 @@ const deckLeft = (page) => page.evaluate(() => document.querySelector('[data-df-
     await ctx.close();
   }
 
-  // ---- phone, touch ----
-  {
+  // ---- phone, touch (needs Chrome's DevTools protocol) ----
+  if (engine === 'chromium') {
     const { ctx, page, errors } = await open(browser, { viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
     const cdp = await ctx.newCDPSession(page);
     // real touch events through the browser's input pipeline

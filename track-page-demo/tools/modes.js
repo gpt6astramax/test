@@ -1,9 +1,10 @@
 // Checks the blur-mode switch in the standalone build: each mode reaches the resting residue its own way.
 // Usage: node tools/modes.js index.html out-dir   (env PLAYWRIGHT / CHROME as in shoot.js)
 const path = require('path');
-const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+const pw = require(process.env.PLAYWRIGHT || 'playwright');
+const engine = process.env.BROWSER || 'chromium';   // chromium | webkit
 (async () => {
-  const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined, args: ['--no-sandbox'] });
+  const browser = await pw[engine].launch(engine === 'chromium' ? { executablePath: process.env.CHROME || undefined, args: ['--no-sandbox'] } : {});
   const page = await browser.newPage({ viewport: { width: 1280, height: 920 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));

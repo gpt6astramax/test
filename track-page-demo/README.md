@@ -23,6 +23,8 @@
   - **JS·filter**：滚动时 JS 每帧直接写 `filter: blur(Npx)`，页面有 `will-change`，是独立图层。
   - **JS·filter 无图层**：同上，但去掉 `will-change`。
   - **JS·backdrop**：JS 每帧改一层毛玻璃的 `backdrop-filter` 半径。玻璃层夹在翻走的页和新页之间，所以背景圆环也会一起被糊。
+- 模式栏下面一行实时显示当前是谁在驱动模糊（CSS 动画还是 JS），以及 JS 每秒写了几次样式，可以确认切换真的生效。
+- "持续改 blur"是压力测试：让当前整页的模糊在 0 和最大值之间不停来回变（1.6 秒一个来回），用当前选中的方式驱动，看帧率能撑住多少。
 
 ## 实现要点
 
@@ -42,7 +44,8 @@
 | `tools/build.js` | 从 `canvas/Main.dc.html` 生成 `index.html` |
 | `tools/lint.py`、`tools/smoke.js` | 检查标签是否闭合、模板变量是否都能取到值 |
 | `tools/shoot.js` | 在无头 Chrome 里跑一遍触摸、滚轮、鼠标、键盘、跳转等操作并截图 |
-| `tools/modes.js` | 检查四种模糊实现方式都能正确切换 |
+| `tools/modes.js` | 检查四种模糊实现方式都能正确切换（`BROWSER=webkit` 可用 WebKit 跑） |
+| `tools/stress.js` | 每种方式各跑几秒压力测试，打印帧率 |
 
 ## 修改后重新生成
 

@@ -174,6 +174,22 @@ autoBtn.addEventListener('click', () => {
     comp.go(n + dir);
   }, 1000);
 });
+// Stress test: keep changing the blur of the whole current page.
+const stressBtn = document.getElementById('stress');
+stressBtn.addEventListener('click', () => {
+  const on = stressBtn.getAttribute('aria-pressed') !== 'true';
+  stressBtn.setAttribute('aria-pressed', String(on));
+  comp.setStress(on);
+});
+// What is actually driving the blur right now, and how often JS writes it.
+const diagEl = document.getElementById('diag');
+const how = { timeline: 'CSS 动画驱动 filter', js: 'JS 每帧写 filter（有 will-change）', nolayer: 'JS 每帧写 filter（无 will-change）', backdrop: 'JS 每帧写 backdrop-filter' };
+setInterval(() => {
+  const w = comp.jsWrites;
+  comp.jsWrites = 0;
+  diagEl.innerHTML = '当前：<b>' + how[comp.mode] + '</b> · JS 写入 <b>' + w + '</b> 次/秒' +
+    (comp.tl ? '' : ' · 此浏览器不支持滚动时间线，CSS 档会退回 JS');
+}, 1000);
 // Frame meter: frames in the last second and the longest gap between two frames.
 const fpsEl = document.getElementById('fps');
 let stamps = [];
@@ -220,6 +236,8 @@ body{margin:0;background:#060607;color:#E9E8E3;font-family:Inter,system-ui,-appl
 .mb[aria-pressed=true]{border-color:#D7F25A;color:#D7F25A}
 .fps{font:500 12px/1 'JetBrains Mono',ui-monospace,Menlo,monospace;color:#E9E8E3;min-width:150px;text-align:center}
 .fps b{font-weight:500}.fps .bad{color:#FF8A5B}
+.diag{flex-basis:100%;text-align:center;font:500 11.5px/1.4 Inter,system-ui,sans-serif;color:#9A9994}
+.diag b{color:#E9E8E3;font-weight:600}
 .frame{position:relative;flex:none}
 #device{position:absolute;left:0;top:0;width:390px;height:844px;transform-origin:0 0;border-radius:44px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.09),0 50px 120px -30px rgba(0,0,0,.95)}
 .panel{width:260px;display:flex;flex-direction:column;gap:18px;font-size:13px}
@@ -242,7 +260,9 @@ ${css}
 <div class="modebar" id="modebar">
 <div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">CSS 时间线</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
 <button type="button" class="mb" id="auto" aria-pressed="false">自动翻页</button>
+<button type="button" class="mb" id="stress" aria-pressed="false">持续改 blur</button>
 <span class="fps" id="fps">— fps</span>
+<span class="diag" id="diag"></span>
 </div>
 <div class="shell">
 <div class="frame" id="frame"><div id="device"></div></div>
