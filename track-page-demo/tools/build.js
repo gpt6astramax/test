@@ -121,10 +121,13 @@ const frame = document.getElementById('frame');
 const device = document.getElementById('device');
 function fit() {
   const narrow = innerWidth < 760;
+  const bar = document.getElementById('modebar').offsetHeight;
+  document.documentElement.style.setProperty('--bar', bar + 'px');
+  const innerH = innerHeight - bar;
   document.body.classList.toggle('narrow', narrow);
   const pad = narrow ? 0 : 56;
   const side = narrow ? 0 : 316;
-  let s = Math.min((innerHeight - pad) / 844, (innerWidth - pad - side) / 390);
+  let s = Math.min((innerH - pad) / 844, (innerWidth - pad - side) / 390);
   if (!narrow) s = Math.min(1, s);
   frame.style.width = (390 * s).toFixed(1) + 'px';
   frame.style.height = (844 * s).toFixed(1) + 'px';
@@ -151,6 +154,41 @@ document.querySelectorAll('[data-prop]').forEach((input) => {
     if (!(prop === 'ghost' && comp.index > 0)) comp.previewHalf();
   });
 });
+// Compare ways of drawing the blur.
+const modeBtns = document.querySelectorAll('[data-mode]');
+function showMode(m) { modeBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === m))); }
+modeBtns.forEach((b) => b.addEventListener('click', () => showMode(comp.setMode(b.dataset.mode))));
+showMode(comp.mode);
+if (!comp.tl) modeBtns[0].title = '这个浏览器不支持滚动时间线，会退回 JS';
+// Auto paging, so the modes can be compared without swiping.
+let autoT = 0;
+let dir = 1;
+const autoBtn = document.getElementById('auto');
+autoBtn.addEventListener('click', () => {
+  const on = autoBtn.getAttribute('aria-pressed') !== 'true';
+  autoBtn.setAttribute('aria-pressed', String(on));
+  clearInterval(autoT);
+  if (on) autoT = setInterval(() => {
+    const n = comp.navIndex();
+    if (n + dir > comp.tracks.length - 1 || n + dir < 0) dir = -dir;
+    comp.go(n + dir);
+  }, 1000);
+});
+// Frame meter: frames in the last second and the longest gap between two frames.
+const fpsEl = document.getElementById('fps');
+let stamps = [];
+let lastShow = 0;
+(function meter(t) {
+  stamps.push(t);
+  while (stamps.length && stamps[0] < t - 1000) stamps.shift();
+  if (t - lastShow > 250 && stamps.length > 1) {
+    lastShow = t;
+    let worst = 0;
+    for (let i = 1; i < stamps.length; i++) worst = Math.max(worst, stamps[i] - stamps[i - 1]);
+    fpsEl.innerHTML = '<b>' + (stamps.length - 1) + '</b> fps · 最长 <b class="' + (worst > 34 ? 'bad' : '') + '">' + Math.round(worst) + '</b>ms';
+  }
+  requestAnimationFrame(meter);
+})(performance.now());
 document.querySelectorAll('[data-accent]').forEach((b) => {
   b.addEventListener('click', () => {
     comp.props.accent = b.dataset.accent;
@@ -173,7 +211,15 @@ ${fontLink}
 <style>
 html,body{height:100%}
 body{margin:0;background:#060607;color:#E9E8E3;font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
-.shell{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;gap:56px}
+.shell{position:fixed;left:0;right:0;bottom:0;top:var(--bar,60px);display:flex;align-items:center;justify-content:center;gap:56px}
+.modebar{position:fixed;left:0;right:0;top:0;z-index:10;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 10px;padding:10px 12px;font:500 12px/1 Inter,system-ui,sans-serif}
+.seg{display:flex;padding:3px;border-radius:999px;background:#17181b;border:1px solid rgba(255,255,255,.08)}
+.seg button,.mb{border:0;border-radius:999px;padding:8px 12px;background:transparent;color:#B9B8B3;font:inherit;cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed=true]{background:#E9E8E3;color:#0C0D0F}
+.mb{border:1px solid rgba(255,255,255,.12)}
+.mb[aria-pressed=true]{border-color:#D7F25A;color:#D7F25A}
+.fps{font:500 12px/1 'JetBrains Mono',ui-monospace,Menlo,monospace;color:#E9E8E3;min-width:150px;text-align:center}
+.fps b{font-weight:500}.fps .bad{color:#FF8A5B}
 .frame{position:relative;flex:none}
 #device{position:absolute;left:0;top:0;width:390px;height:844px;transform-origin:0 0;border-radius:44px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.09),0 50px 120px -30px rgba(0,0,0,.95)}
 .panel{width:260px;display:flex;flex-direction:column;gap:18px;font-size:13px}
@@ -193,6 +239,11 @@ ${css}
 </style>
 </head>
 <body>
+<div class="modebar" id="modebar">
+<div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">滚动时间线</button><button type="button" data-mode="js">JS 每帧改 blur</button><button type="button" data-mode="nolayer">JS 改 blur · 无 will-change</button></div>
+<button type="button" class="mb" id="auto" aria-pressed="false">自动翻页</button>
+<span class="fps" id="fps">— fps</span>
+</div>
 <div class="shell">
 <div class="frame" id="frame"><div id="device"></div></div>
 <aside class="panel" aria-label="动效参数">
