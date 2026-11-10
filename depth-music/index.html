@@ -8,9 +8,15 @@
 <meta name="apple-mobile-web-app-title" content="景深翻页">
 <!-- home-screen app: the page draws under a transparent status bar and fills the whole screen -->
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#f2f2f0" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f2f2f0">
 <script>
+/* The page starts in the light theme, whatever the system is set to; a theme chosen with the button is kept. */
+(function () {
+  var t = 'light';
+  try { if (localStorage.getItem('depth-music-theme') === 'dark') t = 'dark'; } catch (e) { /* storage blocked */ }
+  document.documentElement.setAttribute('data-theme', t);
+  if (t === 'dark') document.querySelector('meta[name="theme-color"]').content = '#000000';
+})();
 /* Device classes on <html>, detected the way Framework7 does. device-full-viewport = iPhone / iPad home-screen app with
    the translucent status bar: there height:100%, bottom:0 on fixed elements and innerHeight all stop short of the
    screen by the status bar's height, while 100vh is the whole screen. */
@@ -43,8 +49,7 @@
   --glass:rgb(255 255 255/.6); --glass-edge:rgb(255 255 255/.9); --lift:0 8px 28px rgb(0 0 0/.12);
   --wave-rest:rgb(17 18 20/.2); --on-acc:#ffffff;
   --acc-l:.52; --acc-c:.17;                 /* accent = oklch(l c <hue of the track>) */
-  --paper:radial-gradient(130% 70% at 28% 0%,#ffffff 0,rgb(255 255 255/0) 70%);   /* light falling on the paper from above */
-  --grain:.4; --sun:none; --moon:block;     /* which icon the theme button shows */
+  --sun:none; --moon:block;                 /* which icon the theme button shows */
   --display:"Bricolage Grotesque","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
   --text:system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -56,13 +61,13 @@
   --hair:rgb(242 242 243/.14); --fill:rgb(242 242 243/.08); --ink:rgb(242 242 243/.14);
   --glass:rgb(30 30 32/.55); --glass-edge:rgb(255 255 255/.12); --lift:0 14px 40px rgb(0 0 0/.6);
   --wave-rest:rgb(242 242 243/.26); --on-acc:#0a0a0b;
-  --acc-l:.82; --acc-c:.13; --paper:none; --grain:0; --sun:block; --moon:none; color-scheme:dark}}
+  --acc-l:.82; --acc-c:.13; --sun:block; --moon:none; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#000000; --fg:#f2f2f3; --fg2:rgb(242 242 243/.64); --fg3:rgb(242 242 243/.38);
   --hair:rgb(242 242 243/.14); --fill:rgb(242 242 243/.08); --ink:rgb(242 242 243/.14);
   --glass:rgb(30 30 32/.55); --glass-edge:rgb(255 255 255/.12); --lift:0 14px 40px rgb(0 0 0/.6);
   --wave-rest:rgb(242 242 243/.26); --on-acc:#0a0a0b;
-  --acc-l:.82; --acc-c:.13; --paper:none; --grain:0; --sun:block; --moon:none; color-scheme:dark}
+  --acc-l:.82; --acc-c:.13; --sun:block; --moon:none; color-scheme:dark}
 
 @property --prog{syntax:'<number>';inherits:false;initial-value:0}
 /* switching theme: the new one spreads in a circle from the button (a view transition, clipped from script);
@@ -93,12 +98,10 @@ svg.ic{display:block;flex:none}
 svg.ic.i-sun{display:var(--sun)}
 svg.ic.i-moon{display:var(--moon)}
 
-/* ---- the ground: fixed, one plain tone. It never moves and takes no colour. ---- */
-.backdrop{position:fixed;top:0;left:0;right:0;height:100%;overflow:hidden;background:var(--bg)}
+/* ---- the ground: fixed, one flat tone and nothing over it. It never moves and takes no colour. Safari reads its own
+   bars' colour from this element, so it stays a plain background-color. ---- */
+.backdrop{position:fixed;top:0;left:0;right:0;height:100%;background-color:var(--bg)}
 html.device-full-viewport .backdrop{height:100vh}   /* home-screen app on iOS: 100% stops short of the screen */
-.backdrop::before{content:"";position:absolute;inset:0;background:var(--paper)}
-.backdrop::after{content:"";position:absolute;inset:0;opacity:var(--grain);mix-blend-mode:soft-light;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
 
 /* ---- frame ---- */
 .app{position:relative;height:100%;max-width:460px;margin:0 auto;overflow:hidden;--chrome:76px}   /* --chrome: what floats above the bottom safe area */
@@ -742,11 +745,6 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
   document.addEventListener('touchmove', function (e) {
     if (e.touches.length > 1 || !e.target.closest || !e.target.closest('.page, .sg, input')) e.preventDefault();
   }, { passive: false });
-  window.addEventListener('scroll', function () {
-    if ((window.scrollY || document.body.scrollTop) && !(document.activeElement && document.activeElement.matches('input'))) {
-      window.scrollTo(0, 0); document.body.scrollTop = 0;
-    }
-  }, { passive: true });
   // interface text is never selected, and a long press brings up no menu
   document.addEventListener('selectstart', function (e) { if (!e.target.closest || !e.target.closest('input')) e.preventDefault(); });
   if (navigator.maxTouchPoints > 0) document.addEventListener('contextmenu', function (e) { if (!e.target.closest('input')) e.preventDefault(); });
@@ -1366,15 +1364,20 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     el.textContent = msg; el.classList.add('on');
     clearTimeout(toastT); toastT = setTimeout(function () { el.classList.remove('on'); }, 1800);
   }
-  // The browser paints its own bars (the status bar, Safari's toolbar) in <meta name="theme-color">, or failing
-  // that in what it samples from the page. Keep that colour on the theme's ground: at start, on every switch, when
-  // the system switches, and when a host page sets data-theme.
+  // The browser's own bars (the status bar, Safari's toolbar) follow the theme's ground. Older Safari and Android
+  // take the colour from <meta name="theme-color">. Safari 26 reads it off the fixed element at the screen's edge
+  // (the ground), and looks again only after a layout, not after a mere change of colour: so the ground is put
+  // back as a new element and resized by a pixel for one frame.
   function syncBars() {
     var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
     if (!bg) return;
     var metas = $$('meta[name="theme-color"]');
     if (!metas.length) { var m = document.createElement('meta'); m.name = 'theme-color'; document.head.appendChild(m); metas = [m]; }
     metas.forEach(function (el) { el.media = ''; el.content = bg; });
+    var old = $('#backdrop'), fresh = old.cloneNode(false);
+    fresh.style.height = 'calc(100% + 1px)';
+    old.replaceWith(fresh);
+    requestAnimationFrame(function () { fresh.style.height = ''; });
   }
   syncBars();
   try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncBars); } catch (e) { /* old Safari: addListener only */ }
@@ -1385,12 +1388,18 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
   function switchTheme(el) {
     var root = document.documentElement, at = root.getAttribute('data-theme');
     var dark = at ? at === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-    var apply = function () { root.setAttribute('data-theme', dark ? 'light' : 'dark'); syncBars(); };
+    var apply = function () {
+      root.setAttribute('data-theme', dark ? 'light' : 'dark');
+      try { localStorage.setItem('depth-music-theme', dark ? 'light' : 'dark'); } catch (e) { /* storage blocked */ }
+      syncBars();
+    };
     if (reduced()) { apply(); return; }
     if (document.startViewTransition) {
       var r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
       var far = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
-      document.startViewTransition(apply).ready.then(function () {
+      var vt = document.startViewTransition(apply);
+      vt.finished.then(syncBars, function () {});           // once more when the old theme's picture is gone
+      vt.ready.then(function () {
         root.animate({ clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + far + 'px at ' + x + 'px ' + y + 'px)'] },
           { duration: 820, easing: 'cubic-bezier(.22,1,.36,1)', pseudoElement: '::view-transition-new(root)' });
       }).catch(function () {});
