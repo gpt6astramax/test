@@ -126,15 +126,12 @@ html.device-full-viewport .backdrop{height:100vh}   /* home-screen app on iOS: 1
 .layer.entering .page-in>*{animation:ds-in var(--push-ms) var(--push-ease) both;animation-delay:calc(var(--i,0) * 30ms)}
 .layer.entering .nav{animation:ds-fade var(--push-ms) ease both}
 
-/* a page: content only, no ground of its own. It fades towards the status bar; at the bottom it runs on under the
-   play bar and the tab row, where the haze blurs it. */
-.page{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:none;
-  --m:linear-gradient(to bottom,transparent 0,transparent calc(var(--sat,0px) * .4),#000 calc(var(--sat,0px) + var(--fade-top,22px)));
-  -webkit-mask-image:var(--m);mask-image:var(--m)}
+/* a page: content only, no ground of its own. It runs on, sharp, under the status bar; at the bottom it runs on
+   under the play bar and the tab row, where the haze blurs it. */
+.page{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:none}
 .page::-webkit-scrollbar{display:none}
 .page-in{display:flex;flex-direction:column;gap:28px;min-height:100%;
   padding:calc(var(--sat,0px) + 18px) var(--gutter-r) calc(var(--sab,0px) + var(--chrome) + 56px) var(--gutter-l)}
-.layer:not(.root) .page{--fade-top:60px}
 .layer:not(.root) .page-in{padding-top:calc(var(--sat,0px) + 66px)}
 .nav{position:absolute;z-index:2;top:calc(var(--sat,0px) + 10px);left:var(--gutter-l);right:var(--gutter-r);display:flex;justify-content:space-between;pointer-events:none}
 .nav .tap{pointer-events:auto}
