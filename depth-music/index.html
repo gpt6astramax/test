@@ -12,17 +12,41 @@
 <script>
 /* The page starts in the light theme, whatever the system is set to. */
 document.documentElement.setAttribute('data-theme', 'light');
-/* Device classes on <html>, as Framework7's device module adds them. device-full-viewport = iPhone / iPad home-screen
-   app with the translucent status bar: there height:100% stops short of the screen by the status bar's height, while
-   100vh is the whole screen. */
+/* Device classes on <html>.
+   device-full-viewport: iPhone / iPad home-screen app with the translucent status bar (as Framework7 detects it).
+   device-short-vh:      in that mode, 100vh comes out short of the screen (by the top safe area), and the page's
+                         origin lies under the status bar's lower edge. The app container is then moved up by the top
+                         safe area and made 100vh + top safe area tall, which is the whole screen. */
 (function () {
   var html = document.documentElement, ua = navigator.userAgent;
   var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-  var standalone = navigator.standalone === true || !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  var standalone = function () { return navigator.standalone === true || !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches); };
   var bar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
   html.classList.add(ios ? 'device-ios' : /Android/.test(ua) ? 'device-android' : 'device-desktop');
-  if (standalone) html.classList.add('device-standalone');
-  if (ios && standalone && bar && bar.content === 'black-translucent') html.classList.add('device-full-viewport');
+  if (standalone()) html.classList.add('device-standalone');
+  var full = ios && standalone() && bar && bar.content === 'black-translucent';
+  if (full) html.classList.add('device-full-viewport');
+
+  function fit() {
+    var p = document.createElement('div');
+    p.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:0;height:100vh;padding-top:env(safe-area-inset-top,0px)';
+    html.appendChild(p);
+    var cs = getComputedStyle(p), vh = parseFloat(cs.height) || 0, top = parseFloat(cs.paddingTop) || 0;
+    html.removeChild(p);
+    var screenH = window.innerWidth > window.innerHeight ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+    var mode = 'auto';
+    try { mode = localStorage.getItem('depth-music-fit') || 'auto'; } catch (e) { /* storage blocked */ }
+    var short = mode === 'on' || (mode === 'auto' && full && top > 0 && vh < screenH - 2);
+    html.classList.toggle('device-short-vh', short);
+    window.__fit = { mode: mode, short: short, vh: Math.round(vh), top: Math.round(top), screen: screenH, inner: window.innerHeight, full: !!full };
+    return window.__fit;
+  }
+  window.__setFit = function (mode) { try { localStorage.setItem('depth-music-fit', mode); } catch (e) { /* storage blocked */ } return fit(); };
+  fit();
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', function () { setTimeout(fit, 300); });
+  window.addEventListener('pageshow', fit);
+  window.addEventListener('load', function () { fit(); setTimeout(fit, 500); });     // env() can still be 0 this early
 })();
 </script>
 <style>
@@ -82,6 +106,10 @@ body{margin:0;padding:0;width:100%;overflow:hidden;overflow-y:scroll;scrollbar-w
 body::-webkit-scrollbar{display:none;width:0}
 .app{overflow:hidden;box-sizing:border-box}
 html.device-full-viewport,html.device-full-viewport body{height:100vh}   /* the whole screen under the translucent status bar */
+/* ...but where 100vh is short of the screen by the top safe area and the page starts below the status bar: the app
+   container leaves the flow, moves up by the top safe area and is 100vh + top safe area tall. Fixed, so that html and
+   body, which stay 100vh, do not clip the part above their own top edge. */
+html.device-short-vh .app{position:fixed;left:0;right:0;top:calc(-1 * env(safe-area-inset-top, 0px));height:calc(100vh + env(safe-area-inset-top, 0px))}
 body{background:var(--bg);color:var(--fg);font-family:var(--text);font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased}
 h1,h2,p,dl,dd,ul{margin:0;padding:0}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.01em}
@@ -98,7 +126,7 @@ svg.ic.i-moon{display:var(--moon)}
    the viewport: Framework7 has no such element either, and the system reads its bars' colour from the body. ---- */
 
 /* ---- frame ---- */
-.app{position:relative;height:100%;max-width:460px;margin:0 auto;overflow:hidden;--chrome:76px}   /* --chrome: what floats above the bottom safe area */
+.app{position:relative;height:100%;max-width:460px;margin:0 auto;overflow:hidden;background:var(--bg);--chrome:76px}   /* --chrome: what floats above the bottom safe area */
 .app.has-bar{--chrome:142px}
 .views,.tabview{position:absolute;inset:0}
 @media (min-width:500px){.views{-webkit-mask-image:linear-gradient(90deg,transparent,#000 32px,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(90deg,transparent,#000 32px,#000 calc(100% - 32px),transparent)}}
@@ -1231,6 +1259,23 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
       '<section class="sec"><h2>歌单</h2><div class="tiles">' + PLAYLISTS.map(tile).join('') + '</div></section>' +
       '<section class="sec"><h2>最近下载</h2>' + rows([byId.t10, byId.t3]) + '</section>';
   }
+  // Home-screen app: how the whole screen is filled, with the numbers the phone gives. Only where the page's own
+  // head script is present (window.__fit); a host page that pads the root has nothing to fit.
+  function fitBlock() {
+    var f = window.__fit;
+    if (!f) return '';
+    return '<section class="sec"><h2>铺满整屏</h2><div>' +
+      '<div class="set"><span>把容器上移一个上安全区<small>高度 100vh + 上安全区，top 为负的上安全区</small></span>' +
+      '<span class="seg" id="fitSeg" role="tablist" aria-label="铺满整屏"><i class="gl-ink"></i>' + glItem('自动') + glItem('开') + glItem('关') + '</span></div>' +
+      '</div><p class="fine mono" id="fitInfo"></p></section>';
+  }
+  function fitInfo() {
+    var f = window.__fit, el = $('#fitInfo');
+    if (!f || !el) return;
+    var r = $('#app').getBoundingClientRect();
+    el.textContent = '现在：' + (f.short ? '已上移' : '未上移') + ' · 屏幕 ' + f.screen + ' · 100vh ' + f.vh + ' · innerHeight ' + f.inner +
+      ' · 上安全区 ' + f.top + ' · 主屏幕全屏模式 ' + (f.full ? '是' : '否') + ' · 容器 top ' + Math.round(r.top) + ' 高 ' + Math.round(r.height);
+  }
   function buildMe(el) {
     el.innerHTML =
       rootHead('<h1 class="big">我的</h1>') +
@@ -1249,8 +1294,14 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
         '<li>右上角的圆钮切换浅色和深色，新主题从按钮处一圈圈铺开。背景只有这两种底色，始终不动。</li>' +
         '<li>上面“界面”里打开底部播放条后，在它上面左右滑，切到下一首或上一首。</li>' +
         '<li>按住底栏拖动，小圆点跟着手指走，经过哪个页签就切到哪个。再点一次当前页签回到第一页。</li>' +
-      '</ul><p class="fine">曲目、音乐人和数据都是虚构的。原型不含音频，播放进度是模拟的。</p><p class="fine mono">版本 11-10 12:02 UTC</p></section>';
+      '</ul><p class="fine">曲目、音乐人和数据都是虚构的。原型不含音频，播放进度是模拟的。</p><p class="fine mono">版本 11-10 12:30 UTC</p></section>' + fitBlock();
     Glider($('#barSeg', el), { index: state.bar ? 1 : 0, onSelect: function (i) { setBar(i === 1); } });
+    if (window.__fit) {
+      var modes = ['auto', 'on', 'off'];
+      Glider($('#fitSeg', el), { index: Math.max(0, modes.indexOf(window.__fit.mode)), onSelect: function (i) { window.__setFit(modes[i]); fitInfo(); } });
+      fitInfo();
+      setTimeout(fitInfo, 800);
+    }
     Glider($('#fmt', el), { index: 0, onSelect: function () {} });
     Glider($('#lufs', el), { index: 0, onSelect: function () {} });
   }
