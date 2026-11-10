@@ -2,24 +2,19 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<!-- the head of Framework7's own project template -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f0">
+<meta name="format-detection" content="telephone=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="景深翻页">
-<!-- home-screen app: the page draws under a transparent status bar and fills the whole screen -->
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#f2f2f0" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-title" content="景深翻页">
 <script>
-/* The page starts in the light theme, whatever the system is set to; a theme chosen with the button is kept. */
-(function () {
-  var t = 'light';
-  try { if (localStorage.getItem('depth-music-theme') === 'dark') t = 'dark'; } catch (e) { /* storage blocked */ }
-  document.documentElement.setAttribute('data-theme', t);
-})();
-/* Device classes on <html>, detected the way Framework7 does. device-full-viewport = iPhone / iPad home-screen app with
-   the translucent status bar: there height:100%, bottom:0 on fixed elements and innerHeight all stop short of the
-   screen by the status bar's height, while 100vh is the whole screen. */
+/* The page starts in the light theme, whatever the system is set to. */
+document.documentElement.setAttribute('data-theme', 'light');
+/* Device classes on <html>, as Framework7's device module adds them. device-full-viewport = iPhone / iPad home-screen
+   app with the translucent status bar: there height:100% stops short of the screen by the status bar's height, while
+   100vh is the whole screen. */
 (function () {
   var html = document.documentElement, ua = navigator.userAgent;
   var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
@@ -32,7 +27,8 @@
 </script>
 <style>
 /* The safe areas (status bar, home indicator; the same env() values on iPhone and iPad, whatever the model) are not
-   padded off the root: they are handed to the page as --sat / --sab and subtracted where content must stay clear. */
+   padded off the root: they are handed to the page as --sat / --sab and subtracted where content must stay clear,
+   as Framework7 does with --f7-safe-area-top / --f7-safe-area-bottom. */
 :root{color-scheme:light;--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px)}
 [hidden]{display:none!important}
 </style>
@@ -49,8 +45,7 @@
   --glass:rgb(255 255 255/.6); --glass-edge:rgb(255 255 255/.9); --lift:0 8px 28px rgb(0 0 0/.12);
   --wave-rest:rgb(17 18 20/.2); --on-acc:#ffffff;
   --acc-l:.52; --acc-c:.17;                 /* accent = oklch(l c <hue of the track>) */
-  --paper:radial-gradient(130% 70% at 28% 0%,#ffffff 0,rgb(255 255 255/0) 70%);   /* light falling on the paper from above */
-  --grain:.4; --sun:none; --moon:block;     /* which icon the theme button shows */
+  --sun:none; --moon:block;                 /* which icon the theme button shows */
   --display:"Bricolage Grotesque","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
   --text:system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -62,13 +57,13 @@
   --hair:rgb(242 242 243/.14); --fill:rgb(242 242 243/.08); --ink:rgb(242 242 243/.14);
   --glass:rgb(30 30 32/.55); --glass-edge:rgb(255 255 255/.12); --lift:0 14px 40px rgb(0 0 0/.6);
   --wave-rest:rgb(242 242 243/.26); --on-acc:#0a0a0b;
-  --acc-l:.82; --acc-c:.13; --paper:none; --grain:0; --sun:block; --moon:none; color-scheme:dark}}
+  --acc-l:.82; --acc-c:.13; --sun:block; --moon:none; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#000000; --fg:#f2f2f3; --fg2:rgb(242 242 243/.64); --fg3:rgb(242 242 243/.38);
   --hair:rgb(242 242 243/.14); --fill:rgb(242 242 243/.08); --ink:rgb(242 242 243/.14);
   --glass:rgb(30 30 32/.55); --glass-edge:rgb(255 255 255/.12); --lift:0 14px 40px rgb(0 0 0/.6);
   --wave-rest:rgb(242 242 243/.26); --on-acc:#0a0a0b;
-  --acc-l:.82; --acc-c:.13; --paper:none; --grain:0; --sun:block; --moon:none; color-scheme:dark}
+  --acc-l:.82; --acc-c:.13; --sun:block; --moon:none; color-scheme:dark}
 
 @property --prog{syntax:'<number>';inherits:false;initial-value:0}
 /* switching theme: the new one spreads in a circle from the button (a view transition, clipped from script);
@@ -81,11 +76,12 @@ html.theming *,html.theming *::before,html.theming *::after{transition:backgroun
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 input[type="search"]{-webkit-user-select:text;user-select:text}
 html{touch-action:pan-x pan-y}
-html,body{position:relative;height:100%;width:100%;overflow-x:hidden}
-body{margin:0;padding:0;overflow:hidden;overflow-y:scroll;scrollbar-width:none}
+html{overscroll-behavior:none}
+html,body,.app{position:relative;height:100%;width:100%;overflow-x:hidden}
+body{margin:0;padding:0;width:100%;overflow:hidden;overflow-y:scroll;scrollbar-width:none}
 body::-webkit-scrollbar{display:none;width:0}
+.app{overflow:hidden;box-sizing:border-box}
 html.device-full-viewport,html.device-full-viewport body{height:100vh}   /* the whole screen under the translucent status bar */
-html{background:var(--bg)}   /* the browser tints its own bars from the page's ground */
 body{background:var(--bg);color:var(--fg);font-family:var(--text);font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased}
 h1,h2,p,dl,dd,ul{margin:0;padding:0}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.01em}
@@ -98,12 +94,8 @@ svg.ic{display:block;flex:none}
 svg.ic.i-sun{display:var(--sun)}
 svg.ic.i-moon{display:var(--moon)}
 
-/* ---- the ground: fixed, one plain tone. It never moves and takes no colour. ---- */
-.backdrop{position:fixed;top:0;left:0;right:0;height:100%;overflow:hidden;background:var(--bg)}
-html.device-full-viewport .backdrop{height:100vh}   /* home-screen app on iOS: 100% stops short of the screen */
-.backdrop::before{content:"";position:absolute;inset:0;background:var(--paper)}
-.backdrop::after{content:"";position:absolute;inset:0;opacity:var(--grain);mix-blend-mode:soft-light;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
+/* ---- the ground is the body's own background (see body above), one flat tone that never moves. Nothing is fixed to
+   the viewport: Framework7 has no such element either, and the system reads its bars' colour from the body. ---- */
 
 /* ---- frame ---- */
 .app{position:relative;height:100%;max-width:460px;margin:0 auto;overflow:hidden;--chrome:76px}   /* --chrome: what floats above the bottom safe area */
@@ -305,12 +297,11 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
   -webkit-mask:var(--hz);mask:var(--hz)}
 
 @media (prefers-reduced-motion: reduce){
-  .tabview,.tap,.backdrop{transition-duration:.01s}
+  .tabview,.tap{transition-duration:.01s}
   .pl-body.swap>*{animation:none}
 }
 </style>
 
-<div class="backdrop" id="backdrop" aria-hidden="true"></div>
 
 <div class="app" id="app">
   <main class="views" id="views">
@@ -1258,7 +1249,7 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
         '<li>右上角的圆钮切换浅色和深色，新主题从按钮处一圈圈铺开。背景只有这两种底色，始终不动。</li>' +
         '<li>上面“界面”里打开底部播放条后，在它上面左右滑，切到下一首或上一首。</li>' +
         '<li>按住底栏拖动，小圆点跟着手指走，经过哪个页签就切到哪个。再点一次当前页签回到第一页。</li>' +
-      '</ul><p class="fine">曲目、音乐人和数据都是虚构的。原型不含音频，播放进度是模拟的。</p></section>';
+      '</ul><p class="fine">曲目、音乐人和数据都是虚构的。原型不含音频，播放进度是模拟的。</p><p class="fine mono">版本 11-10 12:02 UTC</p></section>';
     Glider($('#barSeg', el), { index: state.bar ? 1 : 0, onSelect: function (i) { setBar(i === 1); } });
     Glider($('#fmt', el), { index: 0, onSelect: function () {} });
     Glider($('#lufs', el), { index: 0, onSelect: function () {} });
@@ -1387,7 +1378,6 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     var dark = at ? at === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
     var apply = function () {
       root.setAttribute('data-theme', dark ? 'light' : 'dark');
-      try { localStorage.setItem('depth-music-theme', dark ? 'light' : 'dark'); } catch (e) { /* storage blocked */ }
       syncBars();
     };
     if (reduced()) { apply(); return; }
