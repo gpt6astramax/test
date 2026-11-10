@@ -171,11 +171,17 @@ function showPaging() {
 }
 pagingBtns.forEach((b) => b.addEventListener('click', () => { comp.setPaging(b.dataset.paging); showPaging(); }));
 showPaging();
-// The last 3% of a turn lets touches through to the destination page (off / back turns / both ways).
+// The end of a turn lets touches through to the destination page (off / back turns / both ways).
 const passBtns = document.querySelectorAll('[data-pass]');
 function showPass() { passBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pass === comp.passMode))); }
 passBtns.forEach((b) => b.addEventListener('click', () => { comp.setPassMode(b.dataset.pass); showPass(); }));
 showPass();
+// How much of the turn is left when touches start passing through (0-20%).
+const zoneIn = document.getElementById('passZone');
+const zoneOut = document.getElementById('passZoneOut');
+const showZone = () => { zoneOut.textContent = zoneIn.value + '%'; };
+zoneIn.addEventListener('input', () => { comp.props.passZone = Number(zoneIn.value); comp.updatePassing(); showZone(); });
+showZone();
 // Auto paging, so the modes can be compared without swiping.
 let autoT = 0;
 let dir = 1;
@@ -323,6 +329,9 @@ body.narrow .mrow::-webkit-scrollbar{display:none}
 .seg button,.mb{border:0;border-radius:999px;padding:8px 12px;background:transparent;color:#B9B8B3;font:inherit;cursor:pointer;white-space:nowrap}
 .seg button[aria-pressed=true]{background:#E9E8E3;color:#0C0D0F}
 .seg button:disabled{opacity:.35;cursor:not-allowed}
+.segrange{display:flex;align-items:center;gap:8px;padding:0 12px 0 10px;color:#8A8A85;white-space:nowrap}
+.segrange input{width:112px;margin:0;accent-color:#E9E8E3;touch-action:none}
+.segrange output{min-width:34px;text-align:right;font:500 12px/1 'JetBrains Mono',ui-monospace,Menlo,monospace;color:#E9E8E3}
 .mb{border:1px solid rgba(255,255,255,.12)}
 .mb[aria-pressed=true]{border-color:#D7F25A;color:#D7F25A}
 .mb:disabled{opacity:.6}
@@ -361,7 +370,7 @@ ${css}
 <div class="modebar" id="modebar">
 <div class="mrow">
 <div class="seg" role="group" aria-label="翻页引擎"><span class="seglab">翻页</span><button type="button" data-paging="native">原生滚动</button><button type="button" data-paging="js">JS 手势</button></div>
-<div class="seg" role="group" aria-label="末段 3% 穿透"><span class="seglab">末段 3% 穿透</span><button type="button" data-pass="off">关</button><button type="button" data-pass="back">回翻</button><button type="button" data-pass="both">双向</button></div>
+<div class="seg" role="group" aria-label="末段穿透"><span class="seglab">末段穿透</span><button type="button" data-pass="off">关</button><button type="button" data-pass="back">回翻</button><button type="button" data-pass="both">双向</button><label class="segrange" title="翻页还剩多少时开始穿透"><span>阈值</span><input type="range" id="passZone" min="${props.passZone.min}" max="${props.passZone.max}" step="${props.passZone.step}" value="${props.passZone.default}"><output id="passZoneOut"></output></label></div>
 <div class="seg" role="group" aria-label="下沉和模糊的实现方式"><span class="seglab">下沉+模糊</span><button type="button" data-mode="timeline">CSS 跟手</button><button type="button" data-mode="transition">CSS 按时间</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
 </div>
 <div class="mrow">

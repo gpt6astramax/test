@@ -19,6 +19,9 @@ body.narrow .mrow::-webkit-scrollbar{display:none}
 .seg button,.mb{border:0;border-radius:999px;padding:8px 12px;background:transparent;color:#B9B8B3;font:inherit;cursor:pointer;white-space:nowrap}
 .seg button[aria-pressed=true]{background:#E9E8E3;color:#0C0D0F}
 .seg button:disabled{opacity:.35;cursor:not-allowed}
+.segrange{display:flex;align-items:center;gap:8px;padding:0 12px 0 10px;color:#8A8A85;white-space:nowrap}
+.segrange input{width:112px;margin:0;accent-color:#E9E8E3;touch-action:none}
+.segrange output{min-width:34px;text-align:right;font:500 12px/1 'JetBrains Mono',ui-monospace,Menlo,monospace;color:#E9E8E3}
 .mb{border:1px solid rgba(255,255,255,.12)}
 .mb[aria-pressed=true]{border-color:#D7F25A;color:#D7F25A}
 .mb:disabled{opacity:.6}
@@ -75,7 +78,7 @@ html,body{overscroll-behavior:none}
 .df-jsp .df-ga{position:absolute;left:390px;top:0}
 .df-jsp .df-snap{display:none}
 .df-jsp .df-thumb{animation:none!important}
-/* last 3% of a page turn: the page being left lets touches through, the destination takes them */
+/* end of a page turn (the last passZone %): the page being left lets touches through, the destination takes them */
 .df-deck.df-passing .df-page{pointer-events:none}
 .df-deck.df-passing .df-page.is-dest{pointer-events:auto}
 /* time-based mode: crossing a threshold flips a class once; the transition itself plays frame by frame in CSS */
@@ -174,7 +177,7 @@ html,body{overscroll-behavior:none}
 <div class="modebar" id="modebar">
 <div class="mrow">
 <div class="seg" role="group" aria-label="翻页引擎"><span class="seglab">翻页</span><button type="button" data-paging="native">原生滚动</button><button type="button" data-paging="js">JS 手势</button></div>
-<div class="seg" role="group" aria-label="末段 3% 穿透"><span class="seglab">末段 3% 穿透</span><button type="button" data-pass="off">关</button><button type="button" data-pass="back">回翻</button><button type="button" data-pass="both">双向</button></div>
+<div class="seg" role="group" aria-label="末段穿透"><span class="seglab">末段穿透</span><button type="button" data-pass="off">关</button><button type="button" data-pass="back">回翻</button><button type="button" data-pass="both">双向</button><label class="segrange" title="翻页还剩多少时开始穿透"><span>阈值</span><input type="range" id="passZone" min="0" max="20" step="1" value="10"><output id="passZoneOut"></output></label></div>
 <div class="seg" role="group" aria-label="下沉和模糊的实现方式"><span class="seglab">下沉+模糊</span><button type="button" data-mode="timeline">CSS 跟手</button><button type="button" data-mode="transition">CSS 按时间</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
 </div>
 <div class="mrow">
@@ -614,6 +617,12 @@ class Component extends DCLogic {
       drop: this.num(pr.exitDrop, 28),
       ghost: this.num(pr.ghost, 0.75)
     };
+  }
+
+  // How much of a page turn is left when touches start passing through to the destination (0 .. 0.2).
+  zone() {
+    const pr = this.props || {};
+    return Math.max(0, Math.min(0.2, this.num(pr.passZone, 10) / 100));
   }
 
   renderVals() {
@@ -1348,8 +1357,8 @@ class Component extends DCLogic {
 
   jsDown(e) {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    // In the last 3% of a turn the touch belongs to the destination page: the turn keeps finishing behind it,
-    // the page can be scrolled or tapped at once. Otherwise a touch catches the page where it is.
+    // At the end of a turn (the passthrough zone) the touch belongs to the destination page: the turn keeps
+    // finishing behind it, the page can be scrolled or tapped at once. Otherwise a touch catches the page where it is.
     const pass = !!(this.janim && this.jpass);
     if (this.janim && !pass) this.janim = null;
     if (this.jwheel) {
@@ -1373,11 +1382,11 @@ class Component extends DCLogic {
         this.jsRest();
         return;
       }
-      // a sideways drag that started on the destination: finish the turn now and drag from there
+      // a sideways drag that started on the destination takes the page from where the turn has got to
       if (g.pass && this.janim) {
-        const t = this.janim.target;
         this.janim = null;
-        this.jsSettle(t);
+        this.jpass = false;
+        this.passDest = -1;
       }
       g.p0 = this.p;
       try { this.deck.setPointerCapture(g.id); } catch (err) { /* ignore */ }
@@ -1518,9 +1527,9 @@ class Component extends DCLogic {
       this.jsSettle(a.target);
       return;
     }
-    // last 3% of a turn: the destination page takes touches (back turns, or both ways)
+    // end of a turn: the destination page takes touches (back turns, or both ways)
     const dir = a.target < this.index ? 'back' : a.target > this.index ? 'fwd' : '';
-    this.jpass = !!dir && (this.passMode === 'both' || (this.passMode === 'back' && dir === 'back')) && Math.abs(this.p - a.target) < 0.03;
+    this.jpass = !!dir && (this.passMode === 'both' || (this.passMode === 'back' && dir === 'back')) && Math.abs(this.p - a.target) < this.zone();
     this.passDest = this.jpass ? a.target : -1;
     this.layoutJs();
     this.jraf = requestAnimationFrame(this.jsTick);
@@ -1541,8 +1550,8 @@ class Component extends DCLogic {
     }
   }
 
-  // ---- passthrough, after scroll-gesture.js: in the last 3% of a turn the scroller and the page being
-  // left stop taking touches, so the next touch lands on the destination page right away ----
+  // ---- passthrough, after scroll-gesture.js: at the end of a turn (the last passZone %, 0-20) the page being
+  // left stops taking touches, so the next touch lands on the destination page right away ----
 
   setPassMode(m) {
     this.passMode = m === 'off' || m === 'both' ? m : 'back';
@@ -1562,7 +1571,8 @@ class Component extends DCLogic {
   }
 
   // Native paging: the pages live inside the scroller, so a touch on the destination can still stop the snap
-  // (iOS does). If the deck stops moving right after a touch in the last 3%, finish the turn at once.
+  // (iOS stops a decelerating scroll on touch). If the deck stops moving right after a touch in the passthrough
+  // zone, finish the turn in the background with a smooth scroll; the finger stays on the destination page.
   watchPass() {
     const d = this.deck;
     if (!d) return;
@@ -1573,10 +1583,8 @@ class Component extends DCLogic {
       if (this.passDest !== dest || this.paging !== 'native' || this.drag) return;
       const now = d.scrollLeft;
       if (Math.abs(now - at) < 0.5 && Math.abs(now - dest * this.W) > 0.5) {
-        const prev = d.style.scrollBehavior;
-        d.style.scrollBehavior = 'auto';
-        d.scrollLeft = dest * this.W;
-        d.style.scrollBehavior = prev;
+        this.target = dest;
+        d.scrollTo({ left: dest * this.W, behavior: 'smooth' });
         this.passFinished = (this.passFinished || 0) + 1;
       }
     }, 60);
@@ -1589,13 +1597,14 @@ class Component extends DCLogic {
     }
     const p = this.p;
     const rest = this.index;
+    const z = this.zone();
     let dest = -1;
     if (p < rest - 0.0001) {
       const n = Math.floor(p + 0.000001);
-      if (p - n < 0.03) dest = n;
+      if (p - n < z) dest = n;
     } else if (p > rest + 0.0001 && this.passMode === 'both') {
       const n = Math.ceil(p - 0.000001);
-      if (n - p < 0.03) dest = n;
+      if (n - p < z) dest = n;
     }
     this.setPassing(dest);
   }
@@ -1680,7 +1689,7 @@ class Component extends DCLogic {
   }
 }
 
-const comp = DC.mount(Component, document.getElementById('device'), document.getElementById('dc-template'), {"exitBlur":40,"exitScale":0.88,"exitDrop":28,"ghost":0.75,"accent":"#D7F25A"});
+const comp = DC.mount(Component, document.getElementById('device'), document.getElementById('dc-template'), {"exitBlur":40,"exitScale":0.88,"exitDrop":28,"ghost":0.75,"passZone":10,"accent":"#D7F25A"});
 window.__dfDemo = comp;
 
 // Fit the 390×844 frame to the window.
@@ -1737,11 +1746,17 @@ function showPaging() {
 }
 pagingBtns.forEach((b) => b.addEventListener('click', () => { comp.setPaging(b.dataset.paging); showPaging(); }));
 showPaging();
-// The last 3% of a turn lets touches through to the destination page (off / back turns / both ways).
+// The end of a turn lets touches through to the destination page (off / back turns / both ways).
 const passBtns = document.querySelectorAll('[data-pass]');
 function showPass() { passBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pass === comp.passMode))); }
 passBtns.forEach((b) => b.addEventListener('click', () => { comp.setPassMode(b.dataset.pass); showPass(); }));
 showPass();
+// How much of the turn is left when touches start passing through (0-20%).
+const zoneIn = document.getElementById('passZone');
+const zoneOut = document.getElementById('passZoneOut');
+const showZone = () => { zoneOut.textContent = zoneIn.value + '%'; };
+zoneIn.addEventListener('input', () => { comp.props.passZone = Number(zoneIn.value); comp.updatePassing(); showZone(); });
+showZone();
 // Auto paging, so the modes can be compared without swiping.
 let autoT = 0;
 let dir = 1;

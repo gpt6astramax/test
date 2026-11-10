@@ -1,4 +1,4 @@
-// Checks the JS gesture paging engine and the "last 3% lets touches through" rule in the standalone build.
+// Checks the JS gesture paging engine and the "end of a turn lets touches through" rule (0-20% zone) in the standalone build.
 // Usage: node tools/jspaging.js index.html out-dir   (env PLAYWRIGHT / CHROME / BROWSER as in shoot.js)
 // The touch part needs Chrome's DevTools protocol and is skipped in WebKit.
 const path = require('path');
@@ -30,8 +30,20 @@ const st = (page) => page.evaluate(() => {
   };
 });
 const scrollTopOf = (page, i) => page.evaluate((i) => document.querySelectorAll('[data-df-page]')[i].scrollTop, i);
-// wait until a JS turn is inside its last 3%
-const waitTail = (page) => page.waitForFunction(() => { const c = window.__dfDemo; return c.janim && Math.abs(c.p - c.janim.target) < 0.03; }, null, { polling: 'raf', timeout: 3000 });
+// wait until a JS turn is inside its passthrough zone
+const waitTail = (page) => page.waitForFunction(() => { const c = window.__dfDemo; return c.janim && Math.abs(c.p - c.janim.target) < c.zone(); }, null, { polling: 'raf', timeout: 3000 });
+const setZone = (page, v) => page.$eval('#passZone', (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, String(v));
+// run a JS turn to `to` and report how far from the target it was when touches started passing through
+const firstPass = (page, to) => page.evaluate((to) => new Promise((done) => {
+  const c = window.__dfDemo;
+  let first = null;
+  c.go(to);
+  const tick = () => {
+    if (first === null && c.jpass) first = Math.abs(c.p - to);
+    if (c.janim) requestAnimationFrame(tick); else done(first);
+  };
+  requestAnimationFrame(tick);
+}), to);
 
 (async () => {
   const browser = await pw[engine].launch(engine === 'chromium' ? { executablePath: process.env.CHROME || undefined, args: ['--no-sandbox'] } : {});
@@ -94,29 +106,30 @@ const waitTail = (page) => page.waitForFunction(() => { const c = window.__dfDem
     t = await st(page);
     check(t.index === 7 && t.p === 7, 'short slow drag springs back');
 
-    // passthrough (back turn): a press in the last 3% belongs to the destination, the turn keeps finishing
+    // passthrough (back turn): a press at the end of the turn belongs to the destination, the turn keeps finishing
     await page.evaluate(() => window.__dfDemo.go(6));
     await waitTail(page);
     await page.mouse.move(c.x, c.y);
     await page.mouse.down();
     t = await st(page);
     const pe = t.pe;
-    check(t.anim && t.jpass && t.passDest === 6 && pe[6] === 'a' && pe[7] === 'n', 'last 3% of a back turn: destination takes the pointer, the leaving page does not (' + pe + ')');
-    await page.waitForTimeout(700);
+    check(t.anim && t.jpass && t.passDest === 6 && pe[6] === 'a' && pe[7] === 'n', 'end of a back turn: destination takes the pointer, the leaving page does not (' + pe + ')');
+    await page.waitForFunction(() => !window.__dfDemo.janim, null, { polling: 'raf', timeout: 2500 }).catch(() => {});
     t = await st(page);
     check(!t.anim && t.index === 6, 'the turn finishes while the button is still held');
     await page.mouse.up();
-    // a sideways drag that starts in the last 3%: the turn completes at once and the drag starts from the destination
+    // a sideways drag that starts in the zone takes the page from where the turn has got to (no jump)
     await page.evaluate(() => window.__dfDemo.go(5));
     await waitTail(page);
+    const pDown = (await st(page)).p;
     await page.mouse.down();
     for (let i = 1; i <= 6; i++) { await page.mouse.move(c.x + i * 12, c.y); await page.waitForTimeout(16); }
     t = await st(page);
-    check(t.index === 5 && t.p < 5 && t.p > 4.6, 'sideways drag from the tail starts on the destination (p = ' + t.p + ')');
+    check(!t.anim && t.p < pDown - 0.15 && t.p > pDown - 0.3, 'sideways drag in the zone picks the page up where it is (' + pDown + ' -> ' + t.p + ')');
     await page.waitForTimeout(150);
     await page.mouse.up();
     await page.waitForTimeout(1000);
-    check((await st(page)).index === 5, 'and springs back there');
+    check((await st(page)).index === 5, 'and springs back to the destination');
     // off: a press in the tail catches the page where it is
     await page.click('[data-pass="off"]');
     await page.evaluate(() => window.__dfDemo.go(4));
@@ -125,11 +138,24 @@ const waitTail = (page) => page.waitForFunction(() => { const c = window.__dfDem
     await page.mouse.down();
     await page.waitForTimeout(400);
     t = await st(page);
-    check(!t.anim && t.index === 5 && t.p > 4 && t.p < 4.03, 'passthrough off: a press in the tail stops the turn (p = ' + t.p + ')');
+    const z = await page.evaluate(() => window.__dfDemo.zone());
+    check(!t.anim && t.index === 5 && t.p > 4 && t.p < 4 + z, 'passthrough off: a press near the end stops the turn (p = ' + t.p + ')');
     await page.mouse.up();
     await page.waitForTimeout(900);
     check((await st(page)).index === 4, 'and it finishes on release');
     await page.click('[data-pass="back"]');
+
+    // threshold slider: 20 starts passing 20% before the end, 0 never
+    await setZone(page, 20);
+    const at20 = await firstPass(page, 3);
+    await page.waitForTimeout(200);
+    await setZone(page, 0);
+    const at0 = await firstPass(page, 2);
+    await page.waitForTimeout(200);
+    await setZone(page, 10);
+    await page.evaluate(() => window.__dfDemo.go(4));
+    await page.waitForFunction(() => !window.__dfDemo.janim && window.__dfDemo.index === 4, null, { polling: 'raf', timeout: 3000 }).catch(() => {});
+    check(at20 !== null && at20 > 0.15 && at20 <= 0.2 && at0 === null && (await page.textContent('#passZoneOut')) === '10%', 'threshold slider: 20% starts at ' + (at20 && at20.toFixed(3)) + ' from the end, 0% never (' + at0 + ')');
 
     const diag = await page.textContent('#diag');
     check(/JS 手势/.test(diag), 'diag names the paging engine');
@@ -139,7 +165,7 @@ const waitTail = (page) => page.waitForFunction(() => { const c = window.__dfDem
     t = await st(page);
     const left = await page.evaluate(() => document.querySelector('[data-df-deck]').scrollLeft);
     check(t.paging === 'native' && t.mode === (engine === 'webkit' && !(await page.evaluate(() => window.__dfDemo.tl)) ? 'js' : 'timeline') && left === 390 * 4 && t.pe === 'aaaaaaaaaaa', 'native again: deck at page 5, "CSS 跟手" restored, inline styles cleared (' + t.pe + ')');
-    // native passthrough: during the last 3% of a back turn only the destination takes touches.
+    // native passthrough: at the end of a back turn only the destination takes touches.
     // (Headless WebKit runs a smooth scroll in 3-4 big steps, so there it only switches on at the very end.)
     await page.evaluate(() => {
       const c = window.__dfDemo;
@@ -155,7 +181,7 @@ const waitTail = (page) => page.waitForFunction(() => { const c = window.__dfDem
     await page.waitForTimeout(1200);
     const log = await page.evaluate(() => window.__passLog);
     const on = log.find((x) => x.d === 3);
-    check(!!on && on.pe[3] === 'a' && on.pe[4] === 'n' && (engine === 'webkit' || on.p > 3), 'native, last 3%: destination auto, leaving page none (' + JSON.stringify(on) + ')');
+    check(!!on && on.pe[3] === 'a' && on.pe[4] === 'n' && (engine === 'webkit' || on.p > 3), 'native, end of the turn: destination auto, leaving page none (' + JSON.stringify(on) + ')');
     t = await st(page);
     check(!t.deckPassing && t.index === 3 && t.pe === 'aaaaaaaaaaa', 'cleared after the snap');
     check(errors.length === 0, 'no page errors (desktop): ' + errors.join(' | '));
@@ -189,17 +215,17 @@ const waitTail = (page) => page.waitForFunction(() => { const c = window.__dfDem
     await page.waitForTimeout(500);
     check((await scrollTopOf(page, 3)) > 150 && (await counter(page)) === '04/11', 'vertical touch scrolls the page, not the deck');
 
-    // passthrough: in the last 3% of a back turn the destination can be scrolled at once
+    // passthrough: at the end of a back turn the destination can be scrolled at once
     await page.evaluate(() => { document.querySelectorAll('[data-df-page]')[2].scrollTop = 0; window.__dfDemo.go(2); });
     await waitTail(page);
-    const hit = await page.evaluate((p) => { const el = document.elementFromPoint(p.x, p.y); const pg = el && el.closest('[data-df-page]'); return pg ? Array.from(document.querySelectorAll('[data-df-page]')).indexOf(pg) : -1; }, at(386, 500));
+    const hit = await page.evaluate((p) => { const el = document.elementFromPoint(p.x, p.y); const pg = el && el.closest('[data-df-page]'); return pg ? Array.from(document.querySelectorAll('[data-df-page]')).indexOf(pg) : -1; }, at(375, 500));
     await touch('touchStart', at(200, 640));
     for (let i = 1; i <= 12; i++) { await touch('touchMove', at(200, 640 - i * 30)); await page.waitForTimeout(16); }
     let t = await st(page);
     const scrolled = await scrollTopOf(page, 2);
     await touch('touchEnd');
     check(hit === 2, 'right-edge sliver of the leaving page passes touches to the destination (hit page ' + (hit + 1) + ')');
-    check(scrolled > 150 && !t.anim && t.index === 2, 'touch in the last 3%: destination scrolls at once (' + scrolled + 'px), turn finished behind it');
+    check(scrolled > 150 && !t.anim && t.index === 2, 'touch at the end of the turn: destination scrolls at once (' + scrolled + 'px), turn finished behind it');
     await page.waitForTimeout(500);
     // off: the same touch catches the turn, nothing scrolls until it has finished
     await page.click('[data-pass="off"]');
@@ -213,20 +239,20 @@ const waitTail = (page) => page.waitForFunction(() => { const c = window.__dfDem
     check(scrolledOff === 0 && (await st(page)).index === 1, 'passthrough off: the touch is caught by the turn (' + scrolledOff + 'px scrolled)');
     await page.click('[data-pass="back"]');
 
-    // native: a touch in the last 3% that halts the snap gets the turn finished
+    // native: a touch in the zone that halts the snap gets the turn finished behind the finger
     await page.click('[data-paging="native"]');
     await page.waitForTimeout(300);
-    await page.evaluate(() => { const d = document.querySelector('[data-df-deck]'); d.style.scrollSnapType = 'none'; d.scrollLeft = 390 * 0.015; });
+    await page.evaluate(() => { const d = document.querySelector('[data-df-deck]'); d.style.scrollSnapType = 'none'; d.scrollLeft = 390 * 0.06; });
     await page.waitForTimeout(100);
     t = await st(page);
     const passingBefore = t.deckPassing && t.passDest === 0;
     await touch('touchStart', at(200, 500));
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(800);
     const left = await page.evaluate(() => document.querySelector('[data-df-deck]').scrollLeft);
     await touch('touchEnd');
     await page.evaluate(() => { document.querySelector('[data-df-deck]').style.scrollSnapType = ''; });
     await page.waitForTimeout(600);
-    check(passingBefore && left === 0 && (await page.evaluate(() => window.__dfDemo.passFinished)) === 1, 'native: halted snap in the last 3% is finished on touch (deck at ' + left + ')');
+    check(passingBefore && left === 0 && (await page.evaluate(() => window.__dfDemo.passFinished)) === 1, 'native: halted snap in the zone is finished while the finger is down (deck at ' + left + ')');
     check((await counter(page)) === '01/11' && !(await st(page)).deckPassing, 'settled on page 1, passthrough cleared');
     check(errors.length === 0, 'no page errors (phone): ' + errors.join(' | '));
     await ctx.close();
