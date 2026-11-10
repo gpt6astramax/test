@@ -79,6 +79,7 @@ html,body{position:relative;height:100%;width:100%;overflow-x:hidden}
 body{margin:0;padding:0;overflow:hidden;overflow-y:scroll;scrollbar-width:none}
 body::-webkit-scrollbar{display:none;width:0}
 html.device-full-viewport,html.device-full-viewport body{height:100vh}   /* the whole screen under the translucent status bar */
+html,body{overscroll-behavior:none}   /* the document does not bounce */
 html{background:var(--bg)}   /* the browser tints its own bars from the page's ground */
 body{background:var(--bg);color:var(--fg);font-family:var(--text);font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased}
 h1,h2,p,dl,dd,ul{margin:0;padding:0}
@@ -111,7 +112,6 @@ html.device-full-viewport .backdrop{height:100vh}   /* home-screen app on iOS: 1
 
 /* ---- the depth stack ---- */
 .ds{overflow:hidden}
-.ds.ds-pushing{pointer-events:none}
 .layer{position:absolute;inset:0;transform-origin:50% 42%}
 .layer.root{display:flex;flex-direction:column}
 .lbody{display:flex;flex-direction:column;position:relative}
@@ -121,16 +121,18 @@ html.device-full-viewport .backdrop{height:100vh}   /* home-screen app on iOS: 1
 .layer.b3{visibility:hidden}
 @keyframes ds-r1{from{transform:none;filter:blur(0px);opacity:1}to{transform:var(--back-t);filter:blur(var(--back-blur));opacity:var(--back-o)}}
 @keyframes ds-r2{from{transform:var(--back-t);filter:blur(var(--back-blur));opacity:var(--back-o)}to{transform:var(--far-t);filter:blur(var(--far-blur));opacity:0}}
-@keyframes ds-in{from{opacity:0;transform:translate3d(76px,0,0)}to{opacity:1;transform:none}}
+@keyframes ds-in{from{opacity:0;transform:translate3d(28px,0,0)}to{opacity:1;transform:none}}
 @keyframes ds-fade{from{opacity:0}to{opacity:1}}
-.layer.entering .page-in>*{animation:ds-in var(--push-ms) var(--push-ease) both;animation-delay:calc(var(--i,0) * 30ms)}
+/* the page slides in as a whole (ScrollGesture's enter()); on top of that its blocks arrive one after another, all in place when the slide ends */
+.layer.entering .page-in>*{animation:ds-in calc(var(--push-ms) - 140ms) var(--push-ease) both;animation-delay:calc(var(--i,0) * 20ms)}
 .layer.entering .nav{animation:ds-fade var(--push-ms) ease both}
 
 /* a page: content only, no ground of its own. It runs on, sharp, under the status bar; at the bottom it runs on
-   under the play bar and the tab row, where the haze blurs it. */
+   under the play bar and the tab row, where the haze blurs it. A page always scrolls, by a pixel if its content is
+   short, and keeps its overscroll to itself: a page that cannot scroll would hand a drag on to the document. */
 .page{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:none}
 .page::-webkit-scrollbar{display:none}
-.page-in{display:flex;flex-direction:column;gap:28px;min-height:100%;
+.page-in{display:flex;flex-direction:column;gap:28px;min-height:calc(100% + 1px);   /* always scrollable, see .page */
   padding:calc(var(--sat,0px) + 18px) var(--gutter-r) calc(var(--sab,0px) + var(--chrome) + 56px) var(--gutter-l)}
 .layer:not(.root) .page-in{padding-top:calc(var(--sat,0px) + 66px)}
 .nav{position:absolute;z-index:2;top:calc(var(--sat,0px) + 10px);left:var(--gutter-l);right:var(--gutter-r);display:flex;justify-content:space-between;pointer-events:none}
@@ -328,6 +330,8 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
  *   CSS : a registered custom property (default --p) on the element itself, driven by a scroll-driven animation
  * Near the end of a commit the element stops taking pointer input (pointer-events: none),
  * so the next touch reaches whatever lies underneath while the snap animation finishes.
+ * Coming in is the one move that is not a scroll: g.enter() slides the content in with a script-driven animation,
+ * so a finger landing meanwhile scrolls what it lands on and has no scroll of ours to cut short or drag along.
  */
 (function (root) {
   'use strict';
@@ -351,7 +355,14 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
       '.sg-x{flex-direction:row;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior-x:none}' +
       '.sg-y{flex-direction:column;overflow-x:hidden;overflow-y:auto;scroll-snap-type:y mandatory;overscroll-behavior-y:none}' +
       '.sg>.sg-pad,.sg>.sg-body{flex:0 0 100%;min-width:0;min-height:0;box-sizing:border-box;scroll-snap-align:start;scroll-snap-stop:always}' +
-      '.sg.sg-passing{pointer-events:none}';
+      '.sg.sg-passing{pointer-events:none}' +
+      // enter(): the surface itself takes no touches (so what lies beside the moving content can be touched), the
+      // content does; and the surface cannot be scrolled along its axis, by finger or wheel, so the gesture cannot
+      // be started half-way in. (Hidden overflow keeps the scroll position and the timeline.)
+      '.sg.sg-entering{pointer-events:none}' +
+      '.sg.sg-entering>.sg-body{pointer-events:auto}' +
+      '.sg-x.sg-entering{overflow-x:hidden}' +
+      '.sg-y.sg-entering{overflow-y:hidden}';
     document.head.appendChild(styleEl);
     // One passive finger counter for all instances; passive listeners never delay scrolling.
     var onTouch = function (e) {
@@ -485,6 +496,39 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     var setPassing = function (on) { passing = on; el.classList.toggle('sg-passing', on); };
     var writeFallback = function (p) { if (cssVar && !supportsTimeline) scope.style.setProperty(cssVar, String(p * range)); };
 
+    // ---- enter(): the content comes in by animation, not by scrolling ----
+    var entering = null;                                     // { anim, timer, resolve } while an entrance runs
+    function endEnter(arrived) {
+      if (!entering) return;
+      var e = entering;
+      entering = null;
+      clearTimeout(e.timer);
+      if (e.anim) e.anim.cancel();                           // the surface is at rest without it
+      el.classList.remove('sg-entering');
+      e.resolve(arrived);
+    }
+    function enter(side, o) {
+      o = o || {};
+      side = side < 0 ? -1 : 1;
+      endEnter(false);
+      var travel = o.travel == null ? 1 : Math.max(0, Math.min(1, +o.travel));
+      var ms = o.duration == null ? 300 : Math.max(0, +o.duration);
+      // In % of the surface's own size, so nothing has to be measured: 100% is one size, the commit point is
+      // 1 + overshoot. The surface is what moves, not the body: the body is one of its snap areas, and moving a snap
+      // area would have the surface snap after it.
+      var from = side * travel * (1 + over) * 100;
+      el.classList.add('sg-entering');
+      return new Promise(function (resolve) {
+        var e = entering = { anim: null, timer: 0, resolve: resolve };
+        if (from && ms && el.animate) {
+          e.anim = el.animate(
+            [{ transform: (X ? 'translateX(' : 'translateY(') + from + '%)' }, { transform: 'none' }],
+            { duration: ms, easing: o.easing || 'cubic-bezier(.2,.8,.2,1)', fill: 'backwards' });
+          e.anim.onfinish = function () { if (entering === e) endEnter(true); };
+        } else e.timer = setTimeout(function () { if (entering === e) endEnter(true); }, ms);
+      });
+    }
+
     function scrollTo(side, smooth) {
       var o = { behavior: smooth ? 'smooth' : 'auto' };
       o[X ? 'left' : 'top'] = posOf(side);
@@ -585,6 +629,8 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
       get rest() { return rest; },
       /** True while the surface lets touches through. */
       get passing() { return passing; },
+      /** True while an entrance started with enter() is running. */
+      get entering() { return !!entering; },
       /** on('change', p => …) on every scroll update; on('settle', side => …) when it comes to rest. Returns an unsubscribe function. */
       on: function (type, fn) {
         if (!listeners[type]) throw new Error('scroll-gesture: unknown event ' + type);
@@ -596,6 +642,7 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
       go: function (side, o) {
         side = side > 0 ? 1 : side < 0 ? -1 : 0;
         if (!sideAllowed(side)) return;
+        endEnter(false);
         if (o && o.smooth === false) { jump(side); return; }
         if (side === 0 && passing) setPassing(false);
         dropGoal();
@@ -603,10 +650,24 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
         scrollTo(side, true);
       },
       /** Jump back to 0 instantly, e.g. after swapping the content of a committed surface. */
-      reset: function () { jump(0); },
+      reset: function () { endEnter(false); jump(0); },
+      /**
+       * Bring the content in from a side (1 or -1) without scrolling anything. go() is a scroll, and a scroll can be
+       * stopped or dragged along by a finger; coming in needs no finger-following, so the surface is moved as a
+       * whole by a script-driven animation (Web Animations: started from script, run by the compositor) from that
+       * side's commit point to rest. Its scroll position never changes. Until it has arrived:
+       *   - the content can be touched and scrolled across the gesture's axis, not along it;
+       *   - the surface takes no touches of its own, so whatever shows beside the moving content is live too.
+       * Options: duration (ms, default 300), easing (CSS easing), travel (share of the way from the commit point to
+       * cover, default 1; 0 moves nothing and only holds the gesture back for that long).
+       * Returns a promise: true once arrived, false if go(), reset() or destroy() cut it short. Nothing scrolls, so
+       * p, the CSS variable and the timeline stay at rest meanwhile: animate followers on the same clock.
+       */
+      enter: enter,
       destroy: function () {
         clearTimeout(idleT);
         dropGoal();
+        endEnter(false);
         instances.delete(g);
         if (supportsTimeline) refreshTimelineScope();
         if (ro) ro.disconnect();
@@ -621,7 +682,7 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
         else body.classList.remove('sg-body');
         if (padPos) padPos.remove();
         if (padNeg) padNeg.remove();
-        el.classList.remove('sg', 'sg-x', 'sg-y', 'sg-passing');
+        el.classList.remove('sg', 'sg-x', 'sg-y', 'sg-passing', 'sg-entering');
         el.style.removeProperty('scroll-timeline-name');
         el.style.removeProperty('scroll-timeline-axis');
       },
@@ -676,7 +737,16 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) {
     document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false });
   });
-  document.addEventListener('touchmove', function (e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  // ...and the document itself never moves: a drag that starts on nothing scrollable (not a page, not a gesture
+  // surface) would otherwise be handed to the document and take the whole screen, tab row included, with it.
+  document.addEventListener('touchmove', function (e) {
+    if (e.touches.length > 1 || !e.target.closest || !e.target.closest('.page, .sg, input')) e.preventDefault();
+  }, { passive: false });
+  window.addEventListener('scroll', function () {
+    if ((window.scrollY || document.body.scrollTop) && !(document.activeElement && document.activeElement.matches('input'))) {
+      window.scrollTo(0, 0); document.body.scrollTop = 0;
+    }
+  }, { passive: true });
   // interface text is never selected, and a long press brings up no menu
   document.addEventListener('selectstart', function (e) { if (!e.target.closest || !e.target.closest('input')) e.preventDefault(); });
   if (navigator.maxTouchPoints > 0) document.addEventListener('contextmenu', function (e) { if (!e.target.closest('input')) e.preventDefault(); });
@@ -850,6 +920,8 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
   //   the page right below comes back from "behind" (smaller, lower, blurred, faint) into focus,
   //   the one below that comes back from nothing to "behind", anything deeper is not rendered at all,
   //   and the page being swiped away fades out as it goes, so it never reads as a slab sliding off.
+  // Coming in is the one move on a clock: ScrollGesture's enter() slides the page in by animation, with no scroll
+  // for a finger to cut short, and the layers below recede over the same time.
   var OVER = 0.25;            // the swipe ends 25% past the edge: the slow tail of the snap happens off-screen
   var GONE = 0.72;            // the leaving content has faded out once it has moved this share of the screen
   var PUSH_MS = 560, PUSH_EASE = 'cubic-bezier(.2,.86,.24,1)';
@@ -874,7 +946,7 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     rootEl.className = 'layer root';
     rootEl.innerHTML = '<div class="page"><div class="page-in"></div></div>';
     host.appendChild(rootEl);
-    var stack = [], pushT = 0;
+    var stack = [];
     var top = function () { return stack[stack.length - 1]; };
     var layers = function () { return [rootEl].concat(stack.map(function (p) { return p.el; })); };
     var listeners = [];
@@ -951,12 +1023,16 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
         if (tp && tp !== page && tp.g.passing && stack[stack.length - 2] === page) finish(tp);
       });
       g.on('settle', function (side) { if (side === 1) finish(page); });
-      clearTimeout(pushT);
       if (reduced()) bind();
       else {
+        // The page comes in by enter(): an animation, not a scroll, so nothing is held back from the finger. It can
+        // scroll the new page up and down straight away; only the back swipe and taps wait until the page is in.
         bind(true);
         el.classList.add('entering');
-        pushT = setTimeout(function () { el.classList.remove('entering'); bind(); }, PUSH_MS + 7 * 30 + 30);
+        g.enter(1, { duration: PUSH_MS, easing: PUSH_EASE, travel: 0.16 }).then(function () {
+          el.classList.remove('entering');
+          if (stack.indexOf(page) !== -1) bind();
+        });
       }
       listeners.forEach(function (fn) { fn(stack.length); });
       return page;
@@ -965,16 +1041,18 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     function pop() {
       var t = top();
       if (!t) return;
-      if (reduced() || t.el.classList.contains('entering')) { clearTimeout(pushT); t.el.classList.remove('entering'); host.classList.remove('ds-pushing'); finish(t); return; }
+      if (reduced() || t.g.entering) { host.classList.remove('ds-pushing'); finish(t); return; }
       t.g.go(1);
     }
     function popToRoot() {
       stack.slice(0, -1).forEach(finish);
       pop();
     }
-    // a tap on the page below while the top one is still finishing its swipe: finish it first
+    // A tap while a page is coming in does nothing: a second tap on a row must not open it twice.
+    // A tap on the page below while the top one is still finishing its swipe: finish it first.
     host.addEventListener('click', function (e) {
       var t;
+      if (host.classList.contains('ds-pushing')) { e.stopPropagation(); e.preventDefault(); return; }
       while ((t = top()) && t.g.passing && !t.el.contains(e.target)) finish(t);
     }, true);
 
