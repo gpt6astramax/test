@@ -1,0 +1,23 @@
+// Cloudflare Worker "test" —— 整个仓库只部署成这一个 Worker。
+// 根目录的这些文件是基础设施，子项目不要改这里（见 README.md）。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "test",
+  "main": "index.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // 每次 wrangler deploy / dev 之前自动扫描所有子文件夹，生成 .build/
+  "build": {
+    "command": "node build.mjs"
+  },
+
+  // 各子项目的静态文件会被汇总到 .build/assets/<项目名>/
+  "assets": {
+    "directory": ".build/assets",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+
+  "observability": { "enabled": true }
+}

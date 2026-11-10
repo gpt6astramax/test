@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hello</title>
+<h1>hello</h1>
+<p>示例子项目。服务器时间：<code id="t">…</code></p>
+<script>
+  // 用相对路径，这样不依赖项目名
+  fetch("api/time").then((r) => r.json()).then((d) => (t.textContent = d.now));
+</script>
