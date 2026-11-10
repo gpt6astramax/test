@@ -9,40 +9,44 @@
 <title>景深翻页</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-/* Layout: one fixed backdrop that never moves; every page is a borderless plane of content stacked in depth
-   (the page you leave shrinks, sinks and blurs behind the new one); in front float the play bar, a glass capsule,
-   and the tab row: bare icons with a dot under the current one, over a strip that only blurs what passes behind
-   it and has no edge of its own. Colour comes from the track in focus. */
+/* Layout: one fixed ground that never moves, light white or deep black; every page is a borderless plane of content
+   stacked in depth (the page you leave shrinks, sinks and blurs behind the new one); in front floats the tab row:
+   bare icons with a dot under the current one, over a slim capsule of blur that clears in every direction and has
+   no edge. The play bar, a glass capsule, can be switched on above it. Colour comes only from the tracks. */
 :root{
-  --bg:#e7ebef; --fg:#0e1319; --fg2:rgb(14 19 25/.66); --fg3:rgb(14 19 25/.44);
-  --hair:rgb(14 19 25/.11); --fill:rgb(14 19 25/.06); --ink:rgb(14 19 25/.09);
-  --glass:rgb(255 255 255/.52); --glass-edge:rgb(255 255 255/.8); --lift:0 10px 30px rgb(30 45 70/.16);
-  --wave-rest:rgb(14 19 25/.2); --on-acc:#ffffff;
-  --acc-l:.53; --acc-c:.17;                 /* accent = oklch(l c <hue of the track>) */
-  --glow-l:.86; --glow-c:.09; --glow-a:.9;  /* the backdrop's three discs */
-  --grain:.5;
+  --bg:#f2f2f0; --fg:#111214; --fg2:rgb(17 18 20/.62); --fg3:rgb(17 18 20/.36);
+  --hair:rgb(17 18 20/.1); --fill:rgb(17 18 20/.05); --ink:rgb(17 18 20/.09);
+  --glass:rgb(255 255 255/.6); --glass-edge:rgb(255 255 255/.9); --lift:0 8px 28px rgb(0 0 0/.12);
+  --wave-rest:rgb(17 18 20/.2); --on-acc:#ffffff;
+  --acc-l:.52; --acc-c:.17;                 /* accent = oklch(l c <hue of the track>) */
+  --paper:radial-gradient(130% 70% at 28% 0%,#ffffff 0,rgb(255 255 255/0) 70%);   /* light falling on the paper from above */
+  --grain:.4; --sun:none; --moon:block;     /* which icon the theme button shows */
   --display:"Bricolage Grotesque","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
   --text:system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   --gutter-l:max(20px, env(safe-area-inset-left, 0px)); --gutter-r:max(20px, env(safe-area-inset-right, 0px));
-  --chrome:130px;                           /* height the floating play bar and the tab row take at the bottom */
   --spring:cubic-bezier(.3,1.45,.45,1);
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#080b10; --fg:#eef2f6; --fg2:rgb(238 242 246/.68); --fg3:rgb(238 242 246/.44);
-  --hair:rgb(238 242 246/.13); --fill:rgb(238 242 246/.07); --ink:rgb(238 242 246/.13);
-  --glass:rgb(22 27 35/.5); --glass-edge:rgb(255 255 255/.11); --lift:0 14px 40px rgb(0 0 0/.5);
-  --wave-rest:rgb(238 242 246/.24); --on-acc:#0a0d12;
-  --acc-l:.82; --acc-c:.13; --glow-l:.42; --glow-c:.13; --glow-a:.62; --grain:.55; color-scheme:dark}}
+  --bg:#000000; --fg:#f2f2f3; --fg2:rgb(242 242 243/.64); --fg3:rgb(242 242 243/.38);
+  --hair:rgb(242 242 243/.14); --fill:rgb(242 242 243/.08); --ink:rgb(242 242 243/.14);
+  --glass:rgb(30 30 32/.55); --glass-edge:rgb(255 255 255/.12); --lift:0 14px 40px rgb(0 0 0/.6);
+  --wave-rest:rgb(242 242 243/.26); --on-acc:#0a0a0b;
+  --acc-l:.82; --acc-c:.13; --paper:none; --grain:0; --sun:block; --moon:none; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#080b10; --fg:#eef2f6; --fg2:rgb(238 242 246/.68); --fg3:rgb(238 242 246/.44);
-  --hair:rgb(238 242 246/.13); --fill:rgb(238 242 246/.07); --ink:rgb(238 242 246/.13);
-  --glass:rgb(22 27 35/.5); --glass-edge:rgb(255 255 255/.11); --lift:0 14px 40px rgb(0 0 0/.5);
-  --wave-rest:rgb(238 242 246/.24); --on-acc:#0a0d12;
-  --acc-l:.82; --acc-c:.13; --glow-l:.42; --glow-c:.13; --glow-a:.62; --grain:.55; color-scheme:dark}
+  --bg:#000000; --fg:#f2f2f3; --fg2:rgb(242 242 243/.64); --fg3:rgb(242 242 243/.38);
+  --hair:rgb(242 242 243/.14); --fill:rgb(242 242 243/.08); --ink:rgb(242 242 243/.14);
+  --glass:rgb(30 30 32/.55); --glass-edge:rgb(255 255 255/.12); --lift:0 14px 40px rgb(0 0 0/.6);
+  --wave-rest:rgb(242 242 243/.26); --on-acc:#0a0a0b;
+  --acc-l:.82; --acc-c:.13; --paper:none; --grain:0; --sun:block; --moon:none; color-scheme:dark}
 
-@property --h{syntax:'<number>';inherits:true;initial-value:205}
 @property --prog{syntax:'<number>';inherits:false;initial-value:0}
+/* switching theme: the new one spreads in a circle from the button (a view transition, clipped from script);
+   without view transitions every colour cross-fades instead */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+::view-transition-old(root){z-index:1}
+::view-transition-new(root){z-index:2}
+html.theming *,html.theming *::before,html.theming *::after{transition:background-color .6s ease,color .6s ease,border-color .6s ease,box-shadow .6s ease!important}
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 input[type="search"]{-webkit-user-select:text;user-select:text}
@@ -57,19 +61,18 @@ h1,h2,p,dl,dd,ul{margin:0;padding:0}
 .tap{display:block;cursor:pointer;position:relative;transition:opacity .15s, transform .25s var(--spring)}
 .tap:active{opacity:.6;transform:scale(.97)}
 svg.ic{display:block;flex:none}
+svg.ic.i-sun{display:var(--sun)}
+svg.ic.i-moon{display:var(--moon)}
 
-/* ---- the backdrop: fixed, three soft discs in the hue of the track that is playing. It never moves. ---- */
-.backdrop{position:fixed;inset:0;overflow:hidden;background:var(--bg);--h:205;transition:--h 1.8s ease}
-.backdrop i{position:absolute;border-radius:50%;
-  background:radial-gradient(closest-side,oklch(var(--glow-l) var(--glow-c) calc(var(--h) + var(--dh))/var(--glow-a)),transparent)}
-.backdrop i:nth-child(1){--dh:0;width:130vmax;height:130vmax;left:-58vmax;top:-64vmax}
-.backdrop i:nth-child(2){--dh:52;width:96vmax;height:96vmax;right:-52vmax;top:18%}
-.backdrop i:nth-child(3){--dh:-70;width:110vmax;height:110vmax;left:-40vmax;bottom:-66vmax}
+/* ---- the ground: fixed, one plain tone. It never moves and takes no colour. ---- */
+.backdrop{position:fixed;inset:0;overflow:hidden;background:var(--bg)}
+.backdrop::before{content:"";position:absolute;inset:0;background:var(--paper)}
 .backdrop::after{content:"";position:absolute;inset:0;opacity:var(--grain);mix-blend-mode:soft-light;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
 
 /* ---- frame ---- */
-.app{position:relative;height:100%;max-width:460px;margin:0 auto}
+.app{position:relative;height:100%;max-width:460px;margin:0 auto;--chrome:84px}   /* --chrome: what floats at the bottom */
+.app.has-bar{--chrome:150px}
 .views,.tabview{position:absolute;inset:0}
 @media (min-width:500px){.views{-webkit-mask-image:linear-gradient(90deg,transparent,#000 32px,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(90deg,transparent,#000 32px,#000 calc(100% - 32px),transparent)}}
 /* tabs cross-fade; the one you leave drops back out of focus */
@@ -116,6 +119,8 @@ svg.ic{display:block;flex:none}
 .sec>h2{font:600 13px/1.3 var(--text);letter-spacing:.1em;color:var(--fg2)}
 .lede{color:var(--fg2);max-width:34em}
 .head{display:flex;flex-direction:column;gap:6px}
+.rh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.rh>.head{min-width:0}
 
 /* ---- covers: bokeh discs drawn on a canvas once per track ---- */
 .cover{flex:none;border-radius:14px;background:var(--fill) center/cover;position:relative;overflow:hidden}
@@ -225,9 +230,10 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
 
 /* ---- floating chrome ---- */
 .chrome{position:absolute;z-index:5;left:var(--gutter-l);right:var(--gutter-r);
-  bottom:calc(max(env(safe-area-inset-bottom, 0px) - 12px, 12px) - env(safe-area-inset-bottom, 0px));
+  bottom:calc(max(env(safe-area-inset-bottom, 0px) - 4px, 30px) - env(safe-area-inset-bottom, 0px));   /* 30 px clear of the screen's edge: the blur ends above it */
   display:flex;flex-direction:column;gap:8px}
-.shell{position:relative;border-radius:20px;overflow:hidden}
+.shell{position:relative;border-radius:20px;overflow:hidden;display:none}
+.app.has-bar .shell{display:block}
 .player{height:58px}
 .pl-body{display:flex;align-items:center;gap:4px;padding:0 6px 0 8px;opacity:calc(1 - max(var(--p), -1 * var(--p)) * 1.7)}
 .pl-open{flex:1;min-width:0;display:flex;align-items:center;gap:11px}
@@ -254,13 +260,15 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
 .tabs .gl-ink{top:auto;bottom:3px;height:6px;border-radius:0;background:none}
 .tabs .gl-ink::after{content:"";position:absolute;left:50%;top:0;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--fg);
   transform:scale(var(--sx,1),var(--sy,1))}
-/* the haze: no fill, no border, no shadow. It only blurs what is behind the tab row, down to the screen's edge, and
-   thins out upwards so it has no top edge either. */
-.haze{position:absolute;z-index:4;left:0;right:0;bottom:calc(-1 * env(safe-area-inset-bottom, 0px));
-  height:calc(env(safe-area-inset-bottom, 0px) + 104px);pointer-events:none;
-  -webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);
-  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 40px);mask-image:linear-gradient(to bottom,transparent 0,#000 40px)}
-@media (min-width:500px){.haze{left:32px;right:32px}}
+/* the haze: no fill, no border, no shadow, only blur. A slim capsule behind the icons and the dot is fully blurred;
+   from there it clears in every direction (two half discs for the ends, a band between them), and it is clear
+   again before the screen's bottom edge. */
+.haze{position:absolute;z-index:-1;left:-16px;right:-16px;top:-19px;height:92px;pointer-events:none;
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+  --hz:radial-gradient(circle 46px at 100% 50%,#000 20px,rgb(0 0 0/.45) 32px,transparent 46px) left center/46px 100% no-repeat,
+       radial-gradient(circle 46px at 0 50%,#000 20px,rgb(0 0 0/.45) 32px,transparent 46px) right center/46px 100% no-repeat,
+       linear-gradient(to bottom,transparent 0,rgb(0 0 0/.45) 14px,#000 26px,#000 calc(100% - 26px),rgb(0 0 0/.45) calc(100% - 14px),transparent 100%) center/calc(100% - 92px) 100% no-repeat;
+  -webkit-mask:var(--hz);mask:var(--hz)}
 
 @media (prefers-reduced-motion: reduce){
   .tabview,.tap,.backdrop{transition-duration:.01s}
@@ -268,7 +276,7 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
 }
 </style>
 
-<div class="backdrop" id="backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="backdrop" id="backdrop" aria-hidden="true"></div>
 
 <div class="app" id="app">
   <main class="views" id="views">
@@ -277,7 +285,6 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     <section class="tabview" data-tab="2" aria-label="曲库"></section>
     <section class="tabview" data-tab="3" aria-label="我的"></section>
   </main>
-  <i class="haze" aria-hidden="true"></i>
   <div class="chrome" id="chrome"></div>
 </div>
 
@@ -672,7 +679,9 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     compass: '<circle cx="12" cy="12" r="8.5"/><path d="M15.2 8.8l-1.9 4.5-4.5 1.9 1.9-4.5z"/>',
     search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
     stack: '<path d="M5 6v12M9.5 6v12M14 6.5l4.5 11"/>',
-    user: '<circle cx="12" cy="8.5" r="3.7"/><path d="M4.8 20c1-3.7 4-5.5 7.2-5.5s6.2 1.8 7.2 5.5"/>'
+    user: '<circle cx="12" cy="8.5" r="3.7"/><path d="M4.8 20c1-3.7 4-5.5 7.2-5.5s6.2 1.8 7.2 5.5"/>',
+    moon: '<path d="M19.5 14.2A7.6 7.6 0 0 1 9.8 4.5a7.6 7.6 0 1 0 9.7 9.7z"/>',
+    sun: '<circle cx="12" cy="12" r="3.8"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5L7 7M17 17l1.5 1.5M5.5 18.5L7 17M17 7l1.5-1.5"/>'
   };
   function ic(name, size, cls) {
     return '<svg class="ic ' + (cls || '') + '" width="' + (size || 22) + '" height="' + (size || 22) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + PATHS[name] + '</svg>';
@@ -1026,7 +1035,8 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
   }
 
   // ---------------------------------------------------------------- player state (simulated: the prototype has no audio)
-  var state = { cur: 't7', t: 96, playing: true, liked: { t1: 1, t8: 1, t4: 1 }, tab: 0 };
+  var state = { cur: 't7', t: 96, playing: true, liked: { t1: 1, t8: 1, t4: 1 }, tab: 0, bar: false };
+  function setBar(on) { state.bar = on; $('#app').classList.toggle('has-bar', on); }
   var cur = function () { return byId[state.cur]; };
   function syncProgress() {
     var t = cur(), f = clamp(state.t / t.dur, 0, 1);
@@ -1046,7 +1056,6 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
   function setTrack(id, from) {
     state.cur = id; state.t = 0; state.playing = true;
     var t = cur();
-    $('#backdrop').style.setProperty('--h', t.hue);
     renderPlayer(from || 0);
     syncPlay();
   }
@@ -1081,10 +1090,14 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     return '<div class="row">' + tap('row-main', 'coll', { kind: kind, id: id }, '<span class="row-title">' + esc(title) + '</span><span class="row-sub mono">' + esc(note) + '</span>') + '<span class="row-meta">' + ic('go', 18) + '</span></div>';
   };
 
+  // The head of a tab's first page: the big title, and the button that switches between the light and the dark theme.
+  function rootHead(inner) {
+    return '<div class="rh"><div class="head">' + inner + '</div>' + tap('round glass', 'theme', {}, ic('moon', 20, 'i-moon') + ic('sun', 21, 'i-sun'), '切换浅色和深色') + '</div>';
+  }
   function buildDiscover(el) {
     var f = byId.t7;
     el.innerHTML =
-      '<div class="head"><p class="eyebrow">2026 · 第 46 周</p><h1 class="big">发现</h1></div>' +
+      rootHead('<p class="eyebrow">2026 · 第 46 周</p><h1 class="big">发现</h1>') +
       '<div class="feature hue" style="--th:' + f.hue + '" data-cur="' + f.id + '">' +
         tap('cover cv-' + f.id, 'track', { id: f.id }, '', '打开 ' + f.title) +
         '<div class="line">' + tap('t', 'track', { id: f.id }, '<span class="eyebrow">本周主打 · ' + f.genre + '</span><b>' + esc(f.title) + '</b><span>' + esc(artistOf(f).name) + ' · ' + f.bpm + ' BPM · ' + f.key + '</span>') +
@@ -1097,7 +1110,7 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
   }
   function buildSearch(el) {
     el.innerHTML =
-      '<div class="head"><h1 class="big">搜索</h1></div>' +
+      rootHead('<h1 class="big">搜索</h1>') +
       '<label class="field">' + ic('search', 20) + '<input type="search" id="q" placeholder="曲名、音乐人、类型、情绪" autocomplete="off" enterkeyhint="search" aria-label="搜索曲目"></label>' +
       '<div id="results" class="sec" hidden></div>' +
       '<div id="browse" style="display:contents">' +
@@ -1117,16 +1130,19 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
   function buildLibrary(el) {
     var liked = T.filter(function (t) { return state.liked[t.id]; });
     el.innerHTML =
-      '<div class="head"><h1 class="big">曲库</h1><p class="lede">收藏了 ' + liked.length + ' 首，' + PLAYLISTS.length + ' 个歌单。</p></div>' +
+      rootHead('<h1 class="big">曲库</h1><p class="lede">收藏了 ' + liked.length + ' 首，' + PLAYLISTS.length + ' 个歌单。</p>') +
       '<section class="sec"><h2>收藏的曲目</h2>' + (liked.length ? rows(liked) : '<p class="empty">还没有收藏。在曲目页点一下心形，它就会出现在这里。</p>') + '</section>' +
       '<section class="sec"><h2>歌单</h2><div class="tiles">' + PLAYLISTS.map(tile).join('') + '</div></section>' +
       '<section class="sec"><h2>最近下载</h2>' + rows([byId.t10, byId.t3]) + '</section>';
   }
   function buildMe(el) {
     el.innerHTML =
-      '<div class="head"><h1 class="big">我的</h1></div>' +
+      rootHead('<h1 class="big">我的</h1>') +
       '<div class="who"><span class="cover disc av-nl" aria-hidden="true"></span><div><p style="font:650 22px/1.2 var(--display)">山岚工作室</p><p class="lede">创作者方案 · 2027 年 3 月到期</p></div></div>' +
       '<div class="stats"><div><b>12</b><span>本月下载</span></div><div><b>2 / 3</b><span>已授权频道</span></div><div><b>' + T.length + '</b><span>曲库示例曲目</span></div></div>' +
+      '<section class="sec"><h2>界面</h2><div>' +
+        '<div class="set"><span>底部播放条<small>藏起来可以单看底栏；打开后在它上面左右滑切歌</small></span><span class="seg" id="barSeg" role="tablist" aria-label="底部播放条"><i class="gl-ink"></i>' + glItem('隐藏') + glItem('显示') + '</span></div>' +
+      '</div></section>' +
       '<section class="sec"><h2>下载</h2><div>' +
         '<div class="set"><span>格式<small>WAV 为 48 kHz / 24 bit</small></span><span class="seg" id="fmt" role="tablist" aria-label="下载格式"><i class="gl-ink"></i>' + glItem('WAV') + glItem('MP3') + '</span></div>' +
         '<div class="set"><span>响度<small>下载时统一到这个目标</small></span><span class="seg" id="lufs" role="tablist" aria-label="目标响度"><i class="gl-ink"></i>' + glItem('-14') + glItem('-16') + glItem('-23') + '</span></div>' +
@@ -1134,9 +1150,11 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
       '<section class="sec"><h2>这个原型怎么玩</h2><ul class="howto">' +
         '<li>点任意曲目进入曲目页：原来那页原地缩小、下沉、虚化，留在后面当背景。</li>' +
         '<li>在页面任意位置向右滑返回，后面那页跟着手指回到焦点。电脑上用触控板双指横滑，或点左上角的返回。</li>' +
-        '<li>在底部播放条上左右滑，切到下一首或上一首；背景只换颜色，不移动。</li>' +
+        '<li>右上角的圆钮切换浅色和深色，新主题从按钮处一圈圈铺开。背景只有这两种底色，始终不动。</li>' +
+        '<li>上面“界面”里打开底部播放条后，在它上面左右滑，切到下一首或上一首。</li>' +
         '<li>按住底栏拖动，小圆点跟着手指走，经过哪个页签就切到哪个。再点一次当前页签回到第一页。</li>' +
       '</ul><p class="fine">曲目、音乐人和数据都是虚构的。原型不含音频，播放进度是模拟的。</p></section>';
+    Glider($('#barSeg', el), { index: state.bar ? 1 : 0, onSelect: function (i) { setBar(i === 1); } });
     Glider($('#fmt', el), { index: 0, onSelect: function () {} });
     Glider($('#lufs', el), { index: 0, onSelect: function () {} });
   }
@@ -1204,7 +1222,7 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
   var TABS = [['compass', '发现'], ['search', '搜索'], ['stack', '曲库'], ['user', '我的']];
   $('#chrome').innerHTML =
     '<div class="shell glass hue" id="shell"><div class="player" id="player"><div class="pl-body" id="plBody"></div></div><i class="pl-prog" id="plProg"></i></div>' +
-    '<div class="tabs" id="tabs" role="tablist" aria-label="页签"><i class="gl-ink"></i>' +
+    '<div class="tabs" id="tabs" role="tablist" aria-label="页签"><i class="haze" aria-hidden="true"></i><i class="gl-ink"></i>' +
       TABS.map(function (t) { return glItem(ic(t[0], 25), t[1]); }).join('') + '</div>';
   function renderPlayer(from) {
     var t = cur(), body = $('#plBody');
@@ -1234,7 +1252,6 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     onSelect: showTab,
     onReselect: function (i) { if (stacks[i].depth) stacks[i].popToRoot(); else stacks[i].rootPage.scrollTo({ top: 0, behavior: 'smooth' }); }
   });
-  $('#backdrop').style.setProperty('--h', cur().hue);
 
   // ---------------------------------------------------------------- one click handler for every button
   var toastT = 0;
@@ -1244,7 +1261,28 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     el.textContent = msg; el.classList.add('on');
     clearTimeout(toastT); toastT = setTimeout(function () { el.classList.remove('on'); }, 1800);
   }
+  // Light <-> dark, never as a jump: the new theme spreads out in a circle from the button (about 820 ms). Where
+  // there are no view transitions, every colour cross-fades.
+  function switchTheme(el) {
+    var root = document.documentElement, at = root.getAttribute('data-theme');
+    var dark = at ? at === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    var apply = function () { root.setAttribute('data-theme', dark ? 'light' : 'dark'); };
+    if (reduced()) { apply(); return; }
+    if (document.startViewTransition) {
+      var r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+      var far = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+      document.startViewTransition(apply).ready.then(function () {
+        root.animate({ clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + far + 'px at ' + x + 'px ' + y + 'px)'] },
+          { duration: 820, easing: 'cubic-bezier(.22,1,.36,1)', pseudoElement: '::view-transition-new(root)' });
+      }).catch(function () {});
+      return;
+    }
+    root.classList.add('theming');
+    apply();
+    setTimeout(function () { root.classList.remove('theming'); }, 650);
+  }
   var ACT = {
+    theme: function (d, el) { switchTheme(el); },
     back: function () { active().pop(); },
     track: function (d) { var t = byId[d.id]; open('track:' + t.id, function (el) { buildTrack(el, t); }); },
     artist: function (d) { var a = ARTISTS[d.id]; open('artist:' + a.id, function (el) { buildArtist(el, a); }); },
