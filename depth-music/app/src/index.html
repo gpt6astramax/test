@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<!-- the head of Framework7's own project template -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f0">
+<meta name="format-detection" content="telephone=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="景深翻页">
+<script>
+/* The page starts in the light theme, whatever the system is set to. */
+document.documentElement.setAttribute('data-theme', 'light');
+/* Device classes on <html>.
+   device-full-viewport: iPhone / iPad home-screen app with the translucent status bar (as Framework7 detects it).
+   device-short-vh:      in that mode, 100vh comes out short of the screen (by the top safe area), and the page's
+                         origin lies under the status bar's lower edge. The app container is then moved up by the top
+                         safe area and made 100vh + top safe area tall, which is the whole screen. */
+(function () {
+  var html = document.documentElement, ua = navigator.userAgent;
+  var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  var standalone = function () { return navigator.standalone === true || !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches); };
+  var bar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+  html.classList.add(ios ? 'device-ios' : /Android/.test(ua) ? 'device-android' : 'device-desktop');
+  if (standalone()) html.classList.add('device-standalone');
+  var full = ios && standalone() && bar && bar.content === 'black-translucent';
+  if (full) html.classList.add('device-full-viewport');
+
+  function fit() {
+    var p = document.createElement('div');
+    p.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:0;height:100vh;padding-top:env(safe-area-inset-top,0px)';
+    html.appendChild(p);
+    var cs = getComputedStyle(p), vh = parseFloat(cs.height) || 0, top = parseFloat(cs.paddingTop) || 0;
+    html.removeChild(p);
+    var screenH = window.innerWidth > window.innerHeight ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+    var mode = 'auto';
+    try { mode = localStorage.getItem('depth-music-fit') || 'auto'; } catch (e) { /* storage blocked */ }
+    var short = mode === 'on' || (mode === 'auto' && full && top > 0 && vh < screenH - 2);
+    html.classList.toggle('device-short-vh', short);
+    window.__fit = { mode: mode, short: short, vh: Math.round(vh), top: Math.round(top), screen: screenH, inner: window.innerHeight, full: !!full };
+    return window.__fit;
+  }
+  window.__setFit = function (mode) { try { localStorage.setItem('depth-music-fit', mode); } catch (e) { /* storage blocked */ } return fit(); };
+  fit();
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', function () { setTimeout(fit, 300); });
+  window.addEventListener('pageshow', fit);
+  window.addEventListener('load', function () { fit(); setTimeout(fit, 500); });     // env() can still be 0 this early
+})();
+</script>
+<title>景深翻页</title>
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/favicon.png">
+</head>
+<body>
+<div class="app" id="app"></div>
+<script type="module" src="./main.jsx"></script>
+</body>
+</html>

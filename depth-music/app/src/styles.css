@@ -1,0 +1,159 @@
+/* The shell of the app: tokens, the root, the depth stack, the player sheet. Screens are React Native components with
+   their own StyleSheets (src/ui, src/screens); they take every colour from the tokens below.
+
+   Layout: one ground that never moves, light white or deep black; every page is a borderless plane of content stacked
+   in depth (the page you leave shrinks, sinks and blurs behind the new one); the player is the one exception and comes
+   up from below as a sheet; in front floats the tab row. Colour comes only from the tracks. */
+
+@font-face { font-family: "Jost"; font-style: normal; font-weight: 300; font-display: swap; src: url("./fonts/jost-latin-300-normal.woff2") format("woff2"); }
+@font-face { font-family: "Jost"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("./fonts/jost-latin-400-normal.woff2") format("woff2"); }
+
+:root {
+  --bg: #f2f2f0; --fg: #111214; --fg2: rgb(17 18 20 / .62); --fg3: rgb(17 18 20 / .36);
+  --hair: rgb(17 18 20 / .1); --fill: rgb(17 18 20 / .05); --ink: rgb(17 18 20 / .09);
+  --glass: rgb(255 255 255 / .6); --glass-edge: rgb(255 255 255 / .9); --lift: 0 8px 28px rgb(0 0 0 / .12);
+  --sheet: rgb(248 248 246 / .86);
+  --wave-rest: rgb(17 18 20 / .2); --on-acc: #ffffff;
+  --acc-l: .52; --acc-c: .17;               /* accent = oklch(l c <hue of the track>) */
+  --like: #f0467f;                          /* a liked track's heart */
+  --sun: none; --moon: block;               /* which icon the theme button shows */
+  /* Jost, the face of the lit-paper style: light (300) for display, regular for text; Chinese falls to the system face */
+  --display: "Jost", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --text: "Jost", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --gutter-l: max(20px, env(safe-area-inset-left, 0px)); --gutter-r: max(20px, env(safe-area-inset-right, 0px));
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+  --spring: cubic-bezier(.3, 1.45, .45, 1);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #000000; --fg: #f2f2f3; --fg2: rgb(242 242 243 / .64); --fg3: rgb(242 242 243 / .38);
+  --hair: rgb(242 242 243 / .14); --fill: rgb(242 242 243 / .08); --ink: rgb(242 242 243 / .14);
+  --glass: rgb(30 30 32 / .55); --glass-edge: rgb(255 255 255 / .12); --lift: 0 14px 40px rgb(0 0 0 / .6);
+  --sheet: rgb(22 22 24 / .86);
+  --wave-rest: rgb(242 242 243 / .26); --on-acc: #0a0a0b;
+  --acc-l: .82; --acc-c: .13; --like: #ff6b9a; --sun: block; --moon: none; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #000000; --fg: #f2f2f3; --fg2: rgb(242 242 243 / .64); --fg3: rgb(242 242 243 / .38);
+  --hair: rgb(242 242 243 / .14); --fill: rgb(242 242 243 / .08); --ink: rgb(242 242 243 / .14);
+  --glass: rgb(30 30 32 / .55); --glass-edge: rgb(255 255 255 / .12); --lift: 0 14px 40px rgb(0 0 0 / .6);
+  --sheet: rgb(22 22 24 / .86);
+  --wave-rest: rgb(242 242 243 / .26); --on-acc: #0a0a0b;
+  --acc-l: .82; --acc-c: .13; --like: #ff6b9a; --sun: block; --moon: none; color-scheme: dark }
+
+@property --prog { syntax: '<number>'; inherits: false; initial-value: 0 }
+
+/* switching theme: the new one spreads in a circle from the button; without view transitions every colour cross-fades */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal }
+::view-transition-old(root) { z-index: 1 }
+::view-transition-new(root) { z-index: 2 }
+html.theming *, html.theming *::before, html.theming *::after { transition: background-color .6s ease, color .6s ease, border-color .6s ease, box-shadow .6s ease !important }
+
+/* ---- root: Framework7's core/app.less, rule for rule (#app there is .app here) ---- */
+* { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none }
+input[type="search"], input[type="text"] { -webkit-user-select: text; user-select: text }
+html { touch-action: pan-x pan-y; overscroll-behavior: none }
+html, body, .app { position: relative; height: 100%; width: 100%; overflow-x: hidden }
+body { margin: 0; padding: 0; width: 100%; overflow: hidden; overflow-y: scroll; scrollbar-width: none;
+  background: var(--bg); color: var(--fg); font-family: var(--text); font-size: 15px; line-height: 1.5;
+  -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased }
+body::-webkit-scrollbar { display: none; width: 0 }
+html.device-full-viewport, html.device-full-viewport body { height: 100vh }
+[hidden] { display: none !important }
+.hsw { position: absolute; left: 0; top: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none }
+svg.ic { display: block; flex: none }
+svg.ic.i-sun { display: var(--sun) }
+svg.ic.i-moon { display: var(--moon) }
+
+/* ---- frame ---- */
+/* react-native-web mounts the app in a root view that flexes to fill: the container is a column for it */
+.app { display: flex; flex-direction: column; max-width: 460px; margin: 0 auto; overflow: hidden; box-sizing: border-box; background: var(--bg); --chrome: 84px }
+.app.has-bar { --chrome: 150px }
+/* where 100vh is short of the screen by the top safe area and the page starts below the status bar: the container
+   moves up by the top safe area and is 100vh + top safe area tall */
+html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * env(safe-area-inset-top, 0px)); height: calc(100vh + env(safe-area-inset-top, 0px)) }
+.under, .views, .tabview { position: absolute; inset: 0 }
+.under { transform-origin: 50% 40% }
+@media (min-width: 500px) { .views { -webkit-mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent) } }
+/* tabs cross-fade; the one you leave drops back out of focus */
+.tabview { opacity: 0; visibility: hidden; transform: scale(.96); filter: blur(12px);
+  transition: opacity .28s ease, transform .28s ease, filter .28s ease, visibility 0s .28s }
+.tabview.on { opacity: 1; visibility: visible; transform: none; filter: none; transition-delay: 0s }
+
+/* ---- the depth stack (src/lib/depth-stack.js) ---- */
+.ds { overflow: hidden }
+.layer { position: absolute; inset: 0; transform-origin: 50% 42% }
+.layer.root { display: flex; flex-direction: column }
+.lbody { display: flex; flex-direction: column; position: relative }
+.layer.b1, .layer.b2 { will-change: transform, filter, opacity }
+.layer.b1 { transform: var(--back-t); filter: blur(var(--back-blur)); opacity: var(--back-o) }
+.layer.b2 { transform: var(--far-t); filter: blur(var(--far-blur)); opacity: 0 }
+.layer.b3 { visibility: hidden }
+@keyframes ds-r1 { from { transform: none; filter: blur(0px); opacity: 1 } to { transform: var(--back-t); filter: blur(var(--back-blur)); opacity: var(--back-o) } }
+@keyframes ds-r2 { from { transform: var(--back-t); filter: blur(var(--back-blur)); opacity: var(--back-o) } to { transform: var(--far-t); filter: blur(var(--far-blur)); opacity: 0 } }
+@keyframes ds-in { from { opacity: 0; transform: translate3d(28px, 0, 0) } to { opacity: 1; transform: none } }
+@keyframes ds-fade { from { opacity: 0 } to { opacity: 1 } }
+/* the page slides in as a whole (ScrollGesture's enter()); on top of that its blocks arrive one after another */
+.layer.entering .page-in > * { animation: ds-in calc(var(--push-ms) - 140ms) var(--push-ease) both }
+.layer.entering .page-in > *:nth-child(2) { animation-delay: 20ms }
+.layer.entering .page-in > *:nth-child(3) { animation-delay: 40ms }
+.layer.entering .page-in > *:nth-child(4) { animation-delay: 60ms }
+.layer.entering .page-in > *:nth-child(5) { animation-delay: 80ms }
+.layer.entering .page-in > *:nth-child(6) { animation-delay: 100ms }
+.layer.entering .page-in > *:nth-child(7) { animation-delay: 120ms }
+.layer.entering .page-in > *:nth-child(n+8) { animation-delay: 140ms }
+.layer.entering .nav { animation: ds-fade var(--push-ms) ease both }
+
+/* a page: content only, no ground of its own. It always scrolls, by a pixel if its content is short, and keeps its
+   overscroll to itself: a page that cannot scroll would hand a drag on to the document. */
+.page { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: none }
+.page::-webkit-scrollbar { display: none }
+.page-in { display: flex; flex-direction: column; gap: 28px; min-height: calc(100% + 1px); box-sizing: border-box;
+  padding: calc(var(--sat, 0px) + 18px) var(--gutter-r) calc(var(--sab, 0px) + var(--chrome) + 56px) var(--gutter-l) }
+.layer:not(.root) .page-in { padding-top: calc(var(--sat, 0px) + 66px) }
+.nav { position: absolute; z-index: 2; top: calc(var(--sat, 0px) + 10px); left: var(--gutter-l); right: var(--gutter-r); display: flex; justify-content: space-between; pointer-events: none }
+.nav .tap { pointer-events: auto; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; color: var(--fg); transition: opacity .15s, transform .25s var(--spring) }
+.nav .tap:active { opacity: .6; transform: scale(.94) }
+.glass { background: var(--glass); border: 1px solid var(--glass-edge); box-shadow: var(--lift);
+  -webkit-backdrop-filter: blur(26px) saturate(1.7); backdrop-filter: blur(26px) saturate(1.7) }
+
+/* ---- waveform: bars as a mask, played part in the accent ---- */
+.wave { display: block; --prog: 0; transition: --prog .25s linear; -webkit-mask: center / 100% 100% no-repeat; mask: center / 100% 100% no-repeat;
+  background: linear-gradient(90deg, var(--wave-acc, var(--fg)) calc(var(--prog) * 100%), var(--wave-rest) calc(var(--prog) * 100%)) }
+
+/* ---- floating chrome: the play bar (optional) and the tab row (src/ui/DotTabBar) ---- */
+.chrome { position: absolute; z-index: 5; left: var(--gutter-l); right: var(--gutter-r);
+  bottom: max(var(--sab, 0px) - 4px, 26px);   /* above the home indicator, clear of the screen's edge: the blur ends above it */
+  display: flex; flex-direction: column; gap: 8px }
+.shell { position: relative; border-radius: 20px; overflow: hidden }
+.player { height: 58px }
+.pl-body { opacity: calc(1 - max(var(--p), -1 * var(--p)) * 1.7) }
+.player .sg-pad { position: relative }
+.player .sg-pad::after { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; font-size: 13px; color: var(--fg2); white-space: nowrap;
+  opacity: clamp(0, max(var(--p), -1 * var(--p)) * 4 - .3, 1) }
+.player .sg-pad[data-side="-1"]::after { content: "下一首  ›"; left: 22px }
+.player .sg-pad[data-side="1"]::after { content: "‹  上一首"; right: 22px }
+.pl-prog { position: absolute; left: 20px; right: 20px; bottom: 0; height: 2px; border-radius: 2px; background: var(--wave-acc, var(--fg)); transform-origin: 0 50%; transform: scaleX(var(--prog)); transition: --prog .25s linear; --prog: 0; pointer-events: none }
+
+/* ---- the player sheet: comes up from below over everything, goes away with a swipe down ---- */
+.sheet { position: absolute; inset: 0; z-index: 20 }
+.sheet > .sg-body { display: flex; flex-direction: column }
+.sheet-panel { flex: 1; min-height: 0; margin-top: calc(var(--sat, 0px) + 12px); border-radius: 28px 28px 0 0; overflow: hidden; display: flex; flex-direction: column;
+  background: var(--sheet); border-top: 1px solid var(--glass-edge); box-shadow: 0 -10px 40px rgb(0 0 0 / .16);
+  -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6) }
+.sheet-grab { flex: none; height: 28px; display: grid; place-items: center; cursor: grab }
+.sheet-grab::before { content: ""; width: 38px; height: 5px; border-radius: 3px; background: var(--fg3) }
+/* the sheet's content scrolls on its own; at its top a pull down is handed on to the sheet, which is how it is dismissed */
+.sheet-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none }
+.sheet-scroll::-webkit-scrollbar { display: none }
+.sheet-in { display: flex; flex-direction: column; gap: 26px; padding: 6px var(--gutter-r) calc(var(--sab, 0px) + 40px) var(--gutter-l) }
+/* what lies under the sheet drops back out of focus, on the sheet's own scroll timeline */
+.under.sh-back { transform: var(--sh-t); filter: blur(var(--sh-blur)); opacity: var(--sh-o) }
+@keyframes sh-r { from { transform: none; filter: blur(0px); opacity: 1 } to { transform: var(--sh-t); filter: blur(var(--sh-blur)); opacity: var(--sh-o) } }
+
+#toast { position: absolute; z-index: 30; left: 50%; bottom: calc(var(--sab, 0px) + var(--chrome) + 14px); transform: translate(-50%, 10px); padding: 9px 16px; border-radius: 999px;
+  font-size: 13.5px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .25s, transform .35s var(--spring) }
+#toast.on { opacity: 1; transform: translate(-50%, 0) }
+
+@media (prefers-reduced-motion: reduce) {
+  .tabview { transition-duration: .01s }
+}
