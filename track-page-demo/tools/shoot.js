@@ -46,7 +46,7 @@ const deckLeft = (page) => page.evaluate(() => document.querySelector('[data-df-
     await page.waitForTimeout(1000);
     check(await counter(page) === '02/11', 'trackpad-style horizontal wheel snaps to page 2 (' + (await counter(page)) + ')');
     const g = await pageStyle(page, 0);
-    check(Math.abs(g.opacity - 0.5) < 0.02 && /blur\(40px\)/.test(g.filter) && g.vis === 'visible', 'previous page rests as residue: opacity ' + g.opacity + ', ' + g.filter);
+    check(Math.abs(g.opacity - 0.75) < 0.02 && /blur\(40px\)/.test(g.filter) && g.vis === 'visible', 'previous page rests as residue: opacity ' + g.opacity + ', ' + g.filter);
     await page.screenshot({ path: out + '/2-residue.png' });
 
     await page.evaluate(() => { const d = document.querySelector('[data-df-deck]'); d.style.scrollSnapType = 'none'; d.scrollLeft = 390 * 1.5; });
@@ -124,7 +124,7 @@ const deckLeft = (page) => page.evaluate(() => document.querySelector('[data-df-
     await page.waitForTimeout(1100);
     check(await counter(page) === '03/11', 'swipe back to page 3 (' + (await counter(page)) + ')');
     await touch('touchStart', 300, 430);
-    for (let i = 1; i <= 10; i++) { await touch('touchMove', 300 - i * 17, 430); await page.waitForTimeout(16); }
+    for (let i = 1; i <= 10; i++) { await touch('touchMove', 300 - i * 11, 430); await page.waitForTimeout(16); }
     await page.waitForTimeout(150);
     await page.screenshot({ path: out + '/5-phone-held.png' });
     await touch('touchEnd');
@@ -143,7 +143,7 @@ const deckLeft = (page) => page.evaluate(() => document.querySelector('[data-df-
     for (let i = 0; i < 5; i++) { await page.mouse.wheel(70, 0); await page.waitForTimeout(8); }
     await page.waitForTimeout(1000);
     const g = await pageStyle(page, 0);
-    check(await counter(page) === '02/11' && Math.abs(g.opacity - 0.5) < 0.02 && /blur\(40px\)/.test(g.filter), 'JS fallback: page 2 with residue ' + g.opacity + ' ' + g.filter);
+    check(await counter(page) === '02/11' && Math.abs(g.opacity - 0.75) < 0.02 && /blur\(40px\)/.test(g.filter), 'JS fallback: page 2 with residue ' + g.opacity + ' ' + g.filter);
     await page.evaluate(() => { const d = document.querySelector('[data-df-deck]'); d.style.scrollSnapType = 'none'; d.scrollLeft = 390 * 1.5; });
     await page.waitForTimeout(150);
     await page.screenshot({ path: out + '/6-mid-js.png' });

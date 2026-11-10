@@ -188,8 +188,61 @@ setInterval(() => {
   const w = comp.jsWrites;
   comp.jsWrites = 0;
   diagEl.innerHTML = '当前：<b>' + how[comp.mode] + '</b> · JS 写入 <b>' + w + '</b> 次/秒' +
+    (loadMs ? ' · 主线程负载 <b>+' + loadMs + 'ms</b>/帧' : '') +
     (comp.tl ? '' : ' · 此浏览器不支持滚动时间线，CSS 档会退回 JS');
 }, 1000);
+// Refresh-rate check by eye: one dot moved by a CSS animation (compositor), one by JS every rAF
+// (main thread). JS reads the CSS animation's own clock, so both are always at the same position.
+const hzBtn = document.getElementById('hzBtn');
+const hzPanel = document.getElementById('hz');
+const hzCss = document.getElementById('hzCss');
+const hzJs = document.getElementById('hzJs');
+let hzRaf = 0;
+function hzStep() {
+  const a = hzCss.getAnimations ? hzCss.getAnimations()[0] : null;
+  const track = hzJs.parentElement.clientWidth - 10;
+  if (a && a.currentTime != null) {
+    const ph = (a.currentTime % 1000) / 500;           // 0..2 over one back-and-forth (0.5 s each way)
+    const f = ph <= 1 ? ph : 2 - ph;
+    hzJs.style.transform = 'translateX(' + (f * track).toFixed(2) + 'px)';
+  }
+  hzRaf = requestAnimationFrame(hzStep);
+}
+hzBtn.addEventListener('click', () => {
+  const on = hzBtn.getAttribute('aria-pressed') !== 'true';
+  hzBtn.setAttribute('aria-pressed', String(on));
+  hzPanel.hidden = !on;
+  cancelAnimationFrame(hzRaf);
+  if (on) hzRaf = requestAnimationFrame(hzStep);
+  fit();
+});
+// ← → turn pages even when focus sits on a toolbar button (not while a slider has focus).
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+  if (app && app.contains(e.target)) return;                 // the page handles its own keys
+  if (e.target && e.target.tagName === 'INPUT') return;
+  e.preventDefault();
+  comp.go(comp.navIndex() + (e.key === 'ArrowRight' ? 1 : -1));
+});
+// Sustained main-thread load: every frame the main thread stays busy for N ms more, like a heavy page.
+// Native scrolling and compositor animations keep going; anything driven from the main thread stutters.
+let loadMs = 0;
+let loadRaf = 0;
+const loadBtns = document.querySelectorAll('[data-load]');
+const showLoad = () => loadBtns.forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.load) === loadMs)));
+function loadStep() {
+  if (!loadMs) { loadRaf = 0; return; }
+  const end = performance.now() + loadMs;
+  while (performance.now() < end) { /* busy */ }
+  loadRaf = requestAnimationFrame(loadStep);
+}
+loadBtns.forEach((b) => b.addEventListener('click', () => {
+  loadMs = Number(b.dataset.load);
+  showLoad();
+  cancelAnimationFrame(loadRaf);
+  loadRaf = loadMs ? requestAnimationFrame(loadStep) : 0;
+}));
+showLoad();
 // Block the main thread for 3 s. Whatever keeps moving meanwhile runs off the main thread
 // (native scrolling, Core Animation); whatever freezes needs the main thread.
 const blockBtn = document.getElementById('block');
@@ -201,7 +254,7 @@ blockBtn.addEventListener('click', () => {
     while (performance.now() < end) { /* busy */ }
     stamps = [];
     blockBtn.disabled = false;
-    blockBtn.textContent = '阻塞主线程 3 秒';
+    blockBtn.textContent = '阻塞 3 秒';
   }, 30));
 });
 // Frame meter (main thread only): rAF callbacks in the last second and the longest gap between two.
@@ -243,7 +296,12 @@ ${fontLink}
 html,body{height:100%}
 body{margin:0;background:#060607;color:#E9E8E3;font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
 .shell{position:fixed;left:0;right:0;bottom:0;top:var(--bar,60px);display:flex;align-items:center;justify-content:center;gap:56px}
-.modebar{position:fixed;left:0;right:0;top:0;z-index:10;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 10px;padding:10px 12px;font:500 12px/1 Inter,system-ui,sans-serif}
+.modebar{position:fixed;left:0;right:0;top:0;z-index:10;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 12px 8px;font:500 12px/1 Inter,system-ui,sans-serif}
+.mrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 10px;max-width:100%}
+body.narrow .mrow{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;scrollbar-width:none;padding:0 2px 2px;-webkit-overflow-scrolling:touch}
+body.narrow .mrow::-webkit-scrollbar{display:none}
+.mrow>*{flex:none}
+.seglab{align-self:center;padding:0 6px 0 9px;color:#8A8A85;white-space:nowrap}
 .seg{display:flex;padding:3px;border-radius:999px;background:#17181b;border:1px solid rgba(255,255,255,.08)}
 .seg button,.mb{border:0;border-radius:999px;padding:8px 12px;background:transparent;color:#B9B8B3;font:inherit;cursor:pointer;white-space:nowrap}
 .seg button[aria-pressed=true]{background:#E9E8E3;color:#0C0D0F}
@@ -252,8 +310,17 @@ body{margin:0;background:#060607;color:#E9E8E3;font-family:Inter,system-ui,-appl
 .mb:disabled{opacity:.6}
 .fps{font:500 12px/1 'JetBrains Mono',ui-monospace,Menlo,monospace;color:#E9E8E3;min-width:150px;text-align:center}
 .fps b{font-weight:500}.fps .bad{color:#FF8A5B}
-.diag{flex-basis:100%;text-align:center;font:500 11.5px/1.4 Inter,system-ui,sans-serif;color:#9A9994}
+.diag{text-align:center;font:500 11.5px/1.4 Inter,system-ui,sans-serif;color:#9A9994}
 .diag b{color:#E9E8E3;font-weight:600}
+.hz{display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:4px}
+.hz[hidden]{display:none}
+.hzrow{display:flex;align-items:center;gap:10px;font:500 11.5px/1 Inter,system-ui,sans-serif;color:#B9B8B3}
+.hzrow span{width:112px;text-align:right;white-space:nowrap}
+.hztrack{position:relative;width:min(240px,52vw);height:10px;border-radius:5px;background:#1b1c20;overflow:hidden;container-type:inline-size}
+.hzdot{position:absolute;left:0;top:0;width:10px;height:10px;border-radius:50%;background:#D7F25A}
+#hzCss{animation:hzMove .5s linear infinite alternate;will-change:transform}
+@keyframes hzMove{from{transform:translateX(0)}to{transform:translateX(calc(100cqw - 10px))}}
+.hz p{margin:0;max-width:520px;font:400 11.5px/1.5 Inter,system-ui,sans-serif;color:#8A8A85;text-align:center}
 .frame{position:relative;flex:none}
 #device{position:absolute;left:0;top:0;width:390px;height:844px;transform-origin:0 0;border-radius:44px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.09),0 50px 120px -30px rgba(0,0,0,.95)}
 .panel{width:260px;display:flex;flex-direction:column;gap:18px;font-size:13px}
@@ -274,12 +341,21 @@ ${css}
 </head>
 <body>
 <div class="modebar" id="modebar">
+<div class="mrow">
 <div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">CSS 时间线</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
+<div class="seg" role="group" aria-label="主线程负载"><span class="seglab">主线程负载</span><button type="button" data-load="0">无</button><button type="button" data-load="20">+20ms</button><button type="button" data-load="50">+50ms</button><button type="button" data-load="120">+120ms</button></div>
+<button type="button" class="mb" id="block">阻塞 3 秒</button>
 <button type="button" class="mb" id="auto" aria-pressed="false">自动翻页</button>
 <button type="button" class="mb" id="stress" aria-pressed="false">持续改 blur</button>
-<button type="button" class="mb" id="block">阻塞主线程 3 秒</button>
+<button type="button" class="mb" id="hzBtn" aria-pressed="false">刷新率目测</button>
 <span class="fps" id="fps">— fps</span>
+</div>
 <span class="diag" id="diag"></span>
+<div class="hz" id="hz" hidden>
+<div class="hzrow"><span>CSS 动画 · 合成器</span><div class="hztrack"><i class="hzdot" id="hzCss"></i></div></div>
+<div class="hzrow"><span>JS rAF · 主线程</span><div class="hztrack"><i class="hzdot" id="hzJs"></i></div></div>
+<p>两个点任何时刻都在同一位置，只是刷新的次数不同。上面的明显更顺、拖影更短，说明合成器跑得比主线程快（通常就是 120）；两个看起来一样，说明合成器也只有 60。</p>
+</div>
 </div>
 <div class="shell">
 <div class="frame" id="frame"><div id="device"></div></div>

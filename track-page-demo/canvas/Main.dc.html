@@ -39,8 +39,8 @@ html,body{overscroll-behavior:none}
    50% → 100%: one more page on, that backdrop fades out. */
 @keyframes df-sink{
 0%{transform:translate3d(0,0,0) scale(1);filter:blur(0px) brightness(1);opacity:1;animation-timing-function:cubic-bezier(.25,.46,.45,.94)}
-50%{transform:translate3d(0,var(--sink-drop,28px),0) scale(var(--sink-scale,.88));filter:blur(var(--sink-blur,40px)) brightness(.7);opacity:var(--ghost,.5);animation-timing-function:linear}
-100%{transform:translate3d(0,calc(var(--sink-drop,28px) * 1.5),0) scale(calc(var(--sink-scale,.88) - .05));filter:blur(calc(var(--sink-blur,40px) * 1.3)) brightness(.55);opacity:0}
+50%{transform:translate3d(0,var(--sink-drop,28px),0) scale(var(--sink-scale,.88));filter:blur(var(--sink-blur,40px)) brightness(.82);opacity:var(--ghost,.75);animation-timing-function:linear}
+100%{transform:translate3d(0,calc(var(--sink-drop,28px) * 1.5),0) scale(calc(var(--sink-scale,.88) - .05));filter:blur(calc(var(--sink-blur,40px) * 1.3)) brightness(.6);opacity:0}
 }
 @keyframes df-thumb{from{transform:translateX(0px)}to{transform:translateX(100px)}}
 @supports (animation-timeline: scroll()){
@@ -260,7 +260,7 @@ html,body{overscroll-behavior:none}
 
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"exitBlur":{"editor":"range","default":40,"min":0,"max":80,"step":1,"unit":"px","section":"Paging motion"},"exitScale":{"editor":"range","default":0.88,"min":0.7,"max":1,"step":0.01,"section":"Paging motion"},"exitDrop":{"editor":"range","default":28,"min":0,"max":120,"step":1,"unit":"px","section":"Paging motion"},"ghost":{"editor":"range","default":0.5,"min":0,"max":1,"step":0.01,"section":"Paging motion"},"accent":{"editor":"color","default":"#D7F25A","options":["#D7F25A","#8FD3FF","#FF8A5B","#F4F3EF"],"section":"Look"},"$preview":{"width":390,"height":844}}'>
+<script type="text/x-dc" data-dc-script data-props='{"exitBlur":{"editor":"range","default":40,"min":0,"max":80,"step":1,"unit":"px","section":"Paging motion"},"exitScale":{"editor":"range","default":0.88,"min":0.7,"max":1,"step":0.01,"section":"Paging motion"},"exitDrop":{"editor":"range","default":28,"min":0,"max":120,"step":1,"unit":"px","section":"Paging motion"},"ghost":{"editor":"range","default":0.75,"min":0,"max":1,"step":0.01,"section":"Paging motion"},"accent":{"editor":"color","default":"#D7F25A","options":["#D7F25A","#8FD3FF","#FF8A5B","#F4F3EF"],"section":"Look"},"$preview":{"width":390,"height":844}}'>
 class Component extends DCLogic {
   constructor(...args) {
     super(...args);
@@ -412,7 +412,7 @@ class Component extends DCLogic {
       blur: this.num(pr.exitBlur, 40),
       scale: this.num(pr.exitScale, 0.88),
       drop: this.num(pr.exitDrop, 28),
-      ghost: this.num(pr.ghost, 0.5)
+      ghost: this.num(pr.ghost, 0.75)
     };
   }
 
@@ -755,14 +755,14 @@ class Component extends DCLogic {
       ty = v.drop * e;
       sc = 1 - (1 - v.scale) * e;
       bl = v.blur * e;
-      br = 1 - 0.3 * e;
+      br = 1 - 0.18 * e;
       op = 1 - (1 - v.ghost) * e;
     } else {
       const u = Math.min(1, k - 1);
       ty = v.drop * (1 + 0.5 * u);
       sc = v.scale - 0.05 * u;
       bl = v.blur * (1 + 0.3 * u);
-      br = 0.7 - 0.15 * u;
+      br = 0.82 - 0.22 * u;
       op = v.ghost * (1 - u);
     }
     s.transform = 'translate3d(0,' + ty.toFixed(2) + 'px,0) scale(' + sc.toFixed(4) + ')';
