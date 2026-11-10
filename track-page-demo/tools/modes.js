@@ -23,7 +23,8 @@ const engine = process.env.BROWSER || 'chromium';   // chromium | webkit
     await page.evaluate(() => { const d = document.querySelector('[data-df-deck]'); d.scrollTo({ left: 0 }); });
     await page.waitForTimeout(600);
     await page.mouse.move(box.x + 195, box.y + 400);
-    for (let i = 0; i < 5; i++) { await page.mouse.wheel(70, 0); await page.waitForTimeout(8); }
+    // Playwright's WebKit turns one page per wheel event; Chrome needs a short trackpad-like burst
+    for (let i = 0; i < (engine === 'webkit' ? 1 : 5); i++) { await page.mouse.wheel(70, 0); await page.waitForTimeout(8); }
     await page.waitForTimeout(1000);
     const s = await state();
     const ok = mode === 'timeline' ? s.anim === 'df-sink' && /blur\(40px\)/.test(s.filter)

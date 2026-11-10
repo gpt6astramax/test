@@ -115,6 +115,7 @@ const DC = (() => {
 
 const shell = String.raw`
 const comp = DC.mount(Component, document.getElementById('device'), document.getElementById('dc-template'), ${JSON.stringify(defaults)});
+window.__dfDemo = comp;
 
 // Fit the 390×844 frame to the window.
 const frame = document.getElementById('frame');
@@ -158,8 +159,23 @@ document.querySelectorAll('[data-prop]').forEach((input) => {
 const modeBtns = document.querySelectorAll('[data-mode]');
 function showMode(m) { modeBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === m))); }
 modeBtns.forEach((b) => b.addEventListener('click', () => showMode(comp.setMode(b.dataset.mode))));
-showMode(comp.mode);
-if (!comp.tl) modeBtns[0].title = '这个浏览器不支持滚动时间线，会退回 JS';
+// Paging engine: native scrolling (compositor) or JS gestures (pointer events + a spring on the main thread).
+// JS paging has no scroll position, so the scroll-driven CSS mode is not available there.
+const pagingBtns = document.querySelectorAll('[data-paging]');
+const tlBtn = document.querySelector('[data-mode="timeline"]');
+function showPaging() {
+  pagingBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.paging === comp.paging)));
+  tlBtn.disabled = !comp.tl || comp.paging === 'js';
+  tlBtn.title = !comp.tl ? '这个浏览器不支持滚动时间线' : comp.paging === 'js' ? 'JS 手势翻页没有滚动位置，滚动时间线用不了' : '';
+  showMode(comp.mode);
+}
+pagingBtns.forEach((b) => b.addEventListener('click', () => { comp.setPaging(b.dataset.paging); showPaging(); }));
+showPaging();
+// The last 3% of a turn lets touches through to the destination page (off / back turns / both ways).
+const passBtns = document.querySelectorAll('[data-pass]');
+function showPass() { passBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pass === comp.passMode))); }
+passBtns.forEach((b) => b.addEventListener('click', () => { comp.setPassMode(b.dataset.pass); showPass(); }));
+showPass();
 // Auto paging, so the modes can be compared without swiping.
 let autoT = 0;
 let dir = 1;
@@ -184,12 +200,13 @@ stressBtn.addEventListener('click', () => {
 // What is actually driving the blur right now, and how often JS writes it.
 const diagEl = document.getElementById('diag');
 const how = { timeline: 'CSS 滚动驱动 · 跟手（JS 不参与）', transition: 'CSS 过渡 · 按时间播放（JS 只在越过阈值时切一次 class）', js: 'JS 每帧写 filter（有 will-change）', nolayer: 'JS 每帧写 filter（无 will-change）', backdrop: 'JS 每帧写 backdrop-filter' };
+const pagingHow = { native: '原生滚动 + 吸附（浏览器负责）', js: 'JS 手势 + 弹簧（主线程每帧写 transform）' };
 setInterval(() => {
   const w = comp.jsWrites;
   comp.jsWrites = 0;
-  diagEl.innerHTML = '当前：<b>' + how[comp.mode] + '</b> · JS 写入 <b>' + w + '</b> 次/秒' +
+  diagEl.innerHTML = '翻页：<b>' + pagingHow[comp.paging] + '</b> · 下沉+模糊：<b>' + how[comp.mode] + '</b> · JS 写入 <b>' + w + '</b> 次/秒' +
     (loadMs ? ' · 主线程负载 <b>+' + loadMs + 'ms</b>/帧' : '') +
-    (comp.tl ? '' : ' · 此浏览器不支持滚动时间线，"CSS 跟手"会退回 JS');
+    (comp.tl ? '' : ' · 此浏览器不支持滚动时间线');
 }, 1000);
 // Refresh-rate check by eye: one dot moved by a CSS animation (compositor), one by JS every rAF
 // (main thread). JS reads the CSS animation's own clock, so both are always at the same position.
@@ -305,6 +322,7 @@ body.narrow .mrow::-webkit-scrollbar{display:none}
 .seg{display:flex;padding:3px;border-radius:999px;background:#17181b;border:1px solid rgba(255,255,255,.08)}
 .seg button,.mb{border:0;border-radius:999px;padding:8px 12px;background:transparent;color:#B9B8B3;font:inherit;cursor:pointer;white-space:nowrap}
 .seg button[aria-pressed=true]{background:#E9E8E3;color:#0C0D0F}
+.seg button:disabled{opacity:.35;cursor:not-allowed}
 .mb{border:1px solid rgba(255,255,255,.12)}
 .mb[aria-pressed=true]{border-color:#D7F25A;color:#D7F25A}
 .mb:disabled{opacity:.6}
@@ -342,7 +360,11 @@ ${css}
 <body>
 <div class="modebar" id="modebar">
 <div class="mrow">
-<div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">CSS 跟手</button><button type="button" data-mode="transition">CSS 按时间</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
+<div class="seg" role="group" aria-label="翻页引擎"><span class="seglab">翻页</span><button type="button" data-paging="native">原生滚动</button><button type="button" data-paging="js">JS 手势</button></div>
+<div class="seg" role="group" aria-label="末段 3% 穿透"><span class="seglab">末段 3% 穿透</span><button type="button" data-pass="off">关</button><button type="button" data-pass="back">回翻</button><button type="button" data-pass="both">双向</button></div>
+<div class="seg" role="group" aria-label="下沉和模糊的实现方式"><span class="seglab">下沉+模糊</span><button type="button" data-mode="timeline">CSS 跟手</button><button type="button" data-mode="transition">CSS 按时间</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
+</div>
+<div class="mrow">
 <div class="seg" role="group" aria-label="主线程负载"><span class="seglab">主线程负载</span><button type="button" data-load="0">无</button><button type="button" data-load="20">+20ms</button><button type="button" data-load="50">+50ms</button><button type="button" data-load="120">+120ms</button></div>
 <button type="button" class="mb" id="block">阻塞 3 秒</button>
 <button type="button" class="mb" id="auto" aria-pressed="false">自动翻页</button>

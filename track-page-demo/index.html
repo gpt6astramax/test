@@ -18,6 +18,7 @@ body.narrow .mrow::-webkit-scrollbar{display:none}
 .seg{display:flex;padding:3px;border-radius:999px;background:#17181b;border:1px solid rgba(255,255,255,.08)}
 .seg button,.mb{border:0;border-radius:999px;padding:8px 12px;background:transparent;color:#B9B8B3;font:inherit;cursor:pointer;white-space:nowrap}
 .seg button[aria-pressed=true]{background:#E9E8E3;color:#0C0D0F}
+.seg button:disabled{opacity:.35;cursor:not-allowed}
 .mb{border:1px solid rgba(255,255,255,.12)}
 .mb[aria-pressed=true]{border-color:#D7F25A;color:#D7F25A}
 .mb:disabled{opacity:.6}
@@ -67,6 +68,16 @@ html,body{overscroll-behavior:none}
 .df-page{position:-webkit-sticky;position:sticky;left:0;flex:0 0 390px;width:390px;height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:none;transform-origin:50% 46%;will-change:transform,filter,opacity}
 .df-page::-webkit-scrollbar{display:none}
 .df-nolayer .df-page{will-change:auto}
+/* JS paging: no native horizontal scroll; pages stack and move by transform */
+.df-jsp .df-deck{overflow:hidden;touch-action:pan-y}
+.df-jsp .df-track{width:390px!important}
+.df-jsp .df-page{position:absolute;left:0;top:0;touch-action:pan-y}
+.df-jsp .df-ga{position:absolute;left:390px;top:0}
+.df-jsp .df-snap{display:none}
+.df-jsp .df-thumb{animation:none!important}
+/* last 3% of a page turn: the page being left lets touches through, the destination takes them */
+.df-deck.df-passing .df-page{pointer-events:none}
+.df-deck.df-passing .df-page.is-dest{pointer-events:auto}
 /* time-based mode: crossing a threshold flips a class once; the transition itself plays frame by frame in CSS */
 .df-tr .df-page{transform:translate3d(0,0,0) scale(1);filter:blur(0px) brightness(1);opacity:1;transition:transform .45s cubic-bezier(.22,.7,.25,1),filter .45s cubic-bezier(.22,.7,.25,1),opacity .45s cubic-bezier(.22,.7,.25,1)}
 .df-tr .df-page.is-sunk{transform:translate3d(0,var(--sink-drop,28px),0) scale(var(--sink-scale,.88));filter:blur(var(--sink-blur,40px)) brightness(.82);opacity:var(--ghost,.75)}
@@ -162,7 +173,11 @@ html,body{overscroll-behavior:none}
 <body>
 <div class="modebar" id="modebar">
 <div class="mrow">
-<div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">CSS 跟手</button><button type="button" data-mode="transition">CSS 按时间</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
+<div class="seg" role="group" aria-label="翻页引擎"><span class="seglab">翻页</span><button type="button" data-paging="native">原生滚动</button><button type="button" data-paging="js">JS 手势</button></div>
+<div class="seg" role="group" aria-label="末段 3% 穿透"><span class="seglab">末段 3% 穿透</span><button type="button" data-pass="off">关</button><button type="button" data-pass="back">回翻</button><button type="button" data-pass="both">双向</button></div>
+<div class="seg" role="group" aria-label="下沉和模糊的实现方式"><span class="seglab">下沉+模糊</span><button type="button" data-mode="timeline">CSS 跟手</button><button type="button" data-mode="transition">CSS 按时间</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
+</div>
+<div class="mrow">
 <div class="seg" role="group" aria-label="主线程负载"><span class="seglab">主线程负载</span><button type="button" data-load="0">无</button><button type="button" data-load="20">+20ms</button><button type="button" data-load="50">+50ms</button><button type="button" data-load="120">+120ms</button></div>
 <button type="button" class="mb" id="block">阻塞 3 秒</button>
 <button type="button" class="mb" id="auto" aria-pressed="false">自动翻页</button>
@@ -504,7 +519,16 @@ class Component extends DCLogic {
       if (el) el.scrollTop = 0;
       this.go(i);
     };
-    ['frame', 'playTick', 'onScroll', 'onScrollEnd', 'onDown', 'onMove', 'onUp', 'onKey', 'onClickCapture', 'onInput', 'onTouch'].forEach((k) => {
+    this.paging = 'native';
+    this.passMode = 'back';
+    this.passDest = -1;
+    this.jdrag = null;
+    this.janim = null;
+    this.jraf = 0;
+    this.jlast = 0;
+    this.jwheel = null;
+    this.jpass = false;
+    ['frame', 'playTick', 'onScroll', 'onScrollEnd', 'onDown', 'onMove', 'onUp', 'onKey', 'onClickCapture', 'onInput', 'onTouch', 'jsTick', 'onWheelJs'].forEach((k) => {
       this[k] = this[k].bind(this);
     });
   }
@@ -710,6 +734,10 @@ class Component extends DCLogic {
     clearTimeout(this.previewT);
     if (this.stressRaf) cancelAnimationFrame(this.stressRaf);
     this.stress = false;
+    if (this.jraf) cancelAnimationFrame(this.jraf);
+    this.jraf = 0;
+    clearTimeout(this.jwheelT);
+    clearTimeout(this.passT);
   }
 
   resolve() {
@@ -752,6 +780,7 @@ class Component extends DCLogic {
       d.addEventListener('pointerup', this.onUp);
       d.addEventListener('pointercancel', this.onUp);
       d.addEventListener('wheel', this.onInput, { passive: true });
+      if (this.paging === 'js') d.addEventListener('wheel', this.onWheelJs, { passive: false });
       d.addEventListener('touchstart', this.onTouch, { passive: true });
       d.addEventListener('touchend', this.onTouch, { passive: true });
       d.addEventListener('touchcancel', this.onTouch, { passive: true });
@@ -772,6 +801,7 @@ class Component extends DCLogic {
       b.d.removeEventListener('pointerup', this.onUp);
       b.d.removeEventListener('pointercancel', this.onUp);
       b.d.removeEventListener('wheel', this.onInput);
+      b.d.removeEventListener('wheel', this.onWheelJs);
       b.d.removeEventListener('touchstart', this.onTouch);
       b.d.removeEventListener('touchend', this.onTouch);
       b.d.removeEventListener('touchcancel', this.onTouch);
@@ -786,7 +816,7 @@ class Component extends DCLogic {
   // filter: blur() every frame on pages promoted with will-change), 'nolayer' (the same, without
   // will-change) or 'backdrop' (JS writes the backdrop-filter of a glass layer every frame).
   setMode(mode, quiet) {
-    if (mode === 'timeline' && !this.tl) mode = 'js';
+    if (mode === 'timeline' && (!this.tl || this.paging === 'js')) mode = 'js';
     this.mode = mode;
     this.sup = mode === 'timeline';
     this.supThumb = this.sup && CSS.supports('timeline-scope: --a');
@@ -876,9 +906,10 @@ class Component extends DCLogic {
 
   onScroll() {
     const d = this.deck;
-    if (!d) return;
+    if (!d || this.paging === 'js') return;
     this.p = d.scrollLeft / this.W;
     this.lastScroll = performance.now();
+    this.updatePassing();
     if (this.interacted && !this.peekAnim && !this.previewing && Math.abs(this.p - this.index) > 0.05) this.hideHint();
     if (!this.raf) this.raf = requestAnimationFrame(this.frame);
     this.armIdle();
@@ -897,6 +928,10 @@ class Component extends DCLogic {
   // Pages more than one step behind are hidden; pages ahead start at the top.
   // Without scroll timelines the sink effect is written here too.
   paint() {
+    if (this.paging === 'js') {
+      this.layoutJs();
+      return;
+    }
     const N = this.tracks.length;
     const p = this.p;
     for (let i = 0; i < N; i++) {
@@ -981,7 +1016,7 @@ class Component extends DCLogic {
   onScrollEnd() {
     clearTimeout(this.idleT);
     const d = this.deck;
-    if (!d || this.drag || this.peekAnim || this.previewing || this.fingers) return;
+    if (!d || this.paging === 'js' || this.drag || this.peekAnim || this.previewing || this.fingers) return;
     const N = this.tracks.length;
     const p = d.scrollLeft / this.W;
     const i = Math.max(0, Math.min(N - 1, Math.round(p)));
@@ -1005,6 +1040,7 @@ class Component extends DCLogic {
       this.setState({ index: i });
       if (this.stress) this.setStress(true);
     }
+    this.updatePassing();
   }
 
   onInput() {
@@ -1019,10 +1055,15 @@ class Component extends DCLogic {
   }
 
   navIndex() {
+    if (this.paging === 'js') return this.janim ? this.janim.target : this.index;
     return this.target != null ? this.target : this.index;
   }
 
   go(i) {
+    if (this.paging === 'js') {
+      this.jsGo(i);
+      return;
+    }
     const N = this.tracks.length;
     const d = this.deck;
     if (!d || this.drag) return;
@@ -1068,6 +1109,17 @@ class Component extends DCLogic {
 
   // Freeze the deck part-way through a page turn for a moment (used by the motion sliders).
   previewHalf() {
+    if (this.paging === 'js') {
+      if (this.jdrag) return;
+      const n = this.tracks.length;
+      const b = this.index;
+      this.janim = null;
+      this.p = b < n - 1 ? b + 0.6 : b - 0.4;
+      this.layoutJs();
+      clearTimeout(this.previewT);
+      this.previewT = setTimeout(() => this.jsSpringTo(b, 0), 700);
+      return;
+    }
     const d = this.deck;
     if (!d || this.drag) return;
     const N = this.tracks.length;
@@ -1113,11 +1165,20 @@ class Component extends DCLogic {
   // drag moves the deck by hand and hands the rest back to a smooth scroll.
   onDown(e) {
     this.onInput();
+    if (this.paging === 'js') {
+      this.jsDown(e);
+      return;
+    }
+    if (this.passDest >= 0) this.watchPass();
     if (e.pointerType !== 'mouse' || e.button !== 0 || !this.deck) return;
     this.drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, s0: this.deck.scrollLeft, w: this.iw(), axis: null, sm: [{ t: e.timeStamp, x: e.clientX }] };
   }
 
   onMove(e) {
+    if (this.paging === 'js') {
+      this.jsMove(e);
+      return;
+    }
     const g = this.drag;
     if (!g || e.pointerId !== g.id) return;
     const dx = e.clientX - g.x0;
@@ -1141,6 +1202,10 @@ class Component extends DCLogic {
   }
 
   onUp(e) {
+    if (this.paging === 'js') {
+      this.jsUp(e);
+      return;
+    }
     const g = this.drag;
     if (!g || e.pointerId !== g.id) return;
     this.drag = null;
@@ -1159,6 +1224,380 @@ class Component extends DCLogic {
     t = Math.max(0, Math.min(N - 1, t));
     this.target = t;
     this.deck.scrollTo({ left: t * this.W, behavior: 'smooth' });
+  }
+
+  // ---- paging engine: native scrolling (default) or JS gestures (pointer events + spring) ----
+
+  setPaging(kind) {
+    const js = kind === 'js';
+    if (js === (this.paging === 'js')) return this.paging;
+    this.setPassing(-1);
+    this.janim = null;
+    this.jdrag = null;
+    this.jwheel = null;
+    this.jpass = false;
+    if (this.jraf) cancelAnimationFrame(this.jraf);
+    this.jraf = 0;
+    clearTimeout(this.jwheelT);
+    this.drag = null;
+    this.paging = js ? 'js' : 'native';
+    if (this.root && this.root.classList) this.root.classList.toggle('df-jsp', js);
+    this.p = this.index;
+    this.target = null;
+    this.pageEls.forEach((el) => {
+      if (!el || !el.style) return;
+      const s = el.style;
+      s.transform = '';
+      s.filter = '';
+      s.opacity = '';
+      s.visibility = '';
+      s.pointerEvents = '';
+      s.transition = '';
+      if (el.classList) el.classList.remove('is-sunk', 'is-gone', 'is-dest');
+    });
+    this.trState = [];
+    this.vis = [];
+    this.bindEvents();
+    // JS paging has no scroll timeline: "CSS 跟手" becomes JS·filter, and comes back with native paging
+    if (js) {
+      this.forcedFrom = this.mode === 'timeline' ? 'timeline' : null;
+      if (this.forcedFrom) this.setMode('js', true);
+    } else {
+      if (this.forcedFrom && this.mode === 'js') this.setMode(this.forcedFrom, true);
+      this.forcedFrom = null;
+    }
+    if (this.deck) this.deck.scrollLeft = js ? 0 : this.index * this.W;
+    this.paint();
+    if (this.stress) this.setStress(true);
+    return this.paging;
+  }
+
+  // JS paging layout: pages are stacked; the incoming page is moved by transform, the others sink.
+  layoutJs() {
+    const N = this.tracks.length;
+    const W = this.W || 390;
+    const p = this.p;
+    const moving = !!(this.janim || this.jwheel || (this.jdrag && this.jdrag.axis === 'x'));
+    for (let i = 0; i < N; i++) {
+      const el = this.pageEls[i];
+      if (!el || !el.style) continue;
+      const s = el.style;
+      const d = i - p;
+      const k = -d;
+      const vis = d < 0.9999 && k < (this.mode === 'transition' ? 2.999 : 1.999);
+      if (vis !== this.vis[i]) {
+        this.vis[i] = vis;
+        s.visibility = vis ? '' : 'hidden';
+      }
+      if (d >= 0.999 && el.scrollTop) el.scrollTop = 0;
+      if (d > 0.0001) {
+        if (this.trState[i]) {
+          this.trState[i] = '';
+          el.classList.remove('is-sunk', 'is-gone');
+        }
+        s.transition = 'none';
+        s.transform = 'translate3d(' + (Math.min(d, 1) * W).toFixed(2) + 'px,0,0)';
+        s.filter = 'none';
+        s.opacity = '1';
+        const g = this.glassEls[i];
+        if (g && g.style && g.style.display !== 'none') g.style.display = 'none';
+      } else if (this.mode === 'transition') {
+        s.transition = '';
+        s.transform = '';
+        s.filter = '';
+        s.opacity = '';
+        this.trStyle(el, k, i);
+      } else if (k <= 0.0001) {
+        s.transition = '';
+        s.transform = 'none';
+        if (el !== this.stressEl) s.filter = 'none';
+        s.opacity = '1';
+        const g = this.glassEls[i];
+        if (g && g.style && g.style.display !== 'none') g.style.display = 'none';
+      } else {
+        s.transition = '';
+        this.sinkStyle(el, k, i);
+      }
+      s.pointerEvents = (!moving && Math.abs(d) < 0.001) || (this.jpass && i === this.passDest) ? 'auto' : 'none';
+    }
+    if (this.thumb && this.thumb.style) {
+      this.thumb.style.transform = 'translateX(' + (Math.max(0, Math.min(N - 1, p)) * 10).toFixed(2) + 'px)';
+    }
+    if (moving) this.jsWrites++;
+  }
+
+  rubber(x) {
+    return 0.26 * (1 - 1 / (1 + x * 1.8));
+  }
+
+  // Critically damped spring; never overshoots the target.
+  stepSpring(x, v, target, dt) {
+    const w = 13.5;
+    const steps = 3;
+    const h = dt / steps;
+    for (let k = 0; k < steps; k++) {
+      const x0 = x - target;
+      v += (-w * w * x0 - 2 * w * v) * h;
+      x += v * h;
+      const x1 = x - target;
+      if (x0 !== 0 && (x1 === 0 || (x0 > 0) !== (x1 > 0))) return { x: target, v: 0, done: true };
+    }
+    if (Math.abs(x - target) < 0.0005 && Math.abs(v) < 0.01) return { x: target, v: 0, done: true };
+    return { x: x, v: v, done: false };
+  }
+
+  jsDown(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // In the last 3% of a turn the touch belongs to the destination page: the turn keeps finishing behind it,
+    // the page can be scrolled or tapped at once. Otherwise a touch catches the page where it is.
+    const pass = !!(this.janim && this.jpass);
+    if (this.janim && !pass) this.janim = null;
+    if (this.jwheel) {
+      this.jwheel = null;
+      clearTimeout(this.jwheelT);
+    }
+    this.jdrag = { id: e.pointerId, type: e.pointerType, x0: e.clientX, y0: e.clientY, p0: this.p, w: this.iw(), axis: null, pass: pass, sm: [{ t: e.timeStamp, x: e.clientX }] };
+    if (!pass) this.layoutJs();
+  }
+
+  jsMove(e) {
+    const g = this.jdrag;
+    if (!g || e.pointerId !== g.id) return;
+    const dx = e.clientX - g.x0;
+    const dy = e.clientY - g.y0;
+    if (!g.axis) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      g.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (g.axis !== 'x') {
+        this.jdrag = null;
+        this.jsRest();
+        return;
+      }
+      // a sideways drag that started on the destination: finish the turn now and drag from there
+      if (g.pass && this.janim) {
+        const t = this.janim.target;
+        this.janim = null;
+        this.jsSettle(t);
+      }
+      g.p0 = this.p;
+      try { this.deck.setPointerCapture(g.id); } catch (err) { /* ignore */ }
+      this.hideHint();
+    }
+    g.sm.push({ t: e.timeStamp, x: e.clientX });
+    if (g.sm.length > 8) g.sm.shift();
+    if (e.cancelable) e.preventDefault();
+    const N = this.tracks.length;
+    let p = g.p0 - dx / g.w;
+    if (p < 0) p = -this.rubber(-p);
+    else if (p > N - 1) p = N - 1 + this.rubber(p - (N - 1));
+    this.p = p;
+    this.layoutJs();
+  }
+
+  jsUp(e) {
+    const g = this.jdrag;
+    if (!g || e.pointerId !== g.id) return;
+    this.jdrag = null;
+    try { this.deck.releasePointerCapture(g.id); } catch (err) { /* ignore */ }
+    if (g.axis !== 'x') {
+      this.jsRest();
+      return;
+    }
+    this.suppressUntil = performance.now() + 350;
+    const v = e.type === 'pointercancel' ? 0 : this.velocity(g.sm, e.timeStamp);
+    const N = this.tracks.length;
+    let t;
+    if (v < -0.25) t = Math.floor(this.p + 0.0001) + 1;
+    else if (v > 0.25) t = Math.ceil(this.p - 0.0001) - 1;
+    else t = Math.round(this.p);
+    const base = Math.round(g.p0);
+    t = Math.max(base - 1, Math.min(base + 1, t));
+    t = Math.max(0, Math.min(N - 1, t));
+    this.jsSpringTo(t, (-v * 1000) / g.w);
+  }
+
+  jsRest() {
+    if (this.janim || this.jdrag || this.jwheel) return;
+    const r = Math.round(this.p);
+    if (Math.abs(this.p - r) > 0.0001) this.jsSpringTo(r, 0);
+    else this.jsSettle(r);
+  }
+
+  onWheelJs(e) {
+    if (this.paging !== 'js') return;
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.W : 1;
+    let dx = e.deltaX * unit;
+    const dy = e.deltaY * unit;
+    if (e.shiftKey && Math.abs(dx) < 0.5) dx = dy;
+    const ax = Math.abs(dx);
+    if (!this.jwheel && !(ax > Math.abs(dy) * 1.2 && ax > 0.5)) return;   // vertical: the page scrolls natively
+    if (e.cancelable) e.preventDefault();
+    let w = this.jwheel;
+    let base = null;
+    if (w) {
+      // Trackpad momentum keeps sending shrinking deltas; a new swipe makes them climb again. Once the deltas
+      // have shrunk 3 times in a row we are in a tail; a delta well above the tail's low point is a new swipe:
+      // keep the turn so far and start the next one from it.
+      if (w.tail && ax > 10 && ax > w.low * 2.5) {
+        base = this.wheelTarget(w);
+        this.jwheel = w = null;
+      } else {
+        w.down = ax <= w.prev ? w.down + 1 : 0;
+        if (w.down >= 3) w.tail = true;
+        if (w.tail) w.low = Math.min(w.low, ax);
+        w.prev = ax;
+      }
+    }
+    if (!w) {
+      if (base == null) base = this.janim ? this.janim.target : Math.round(this.p);
+      this.janim = null;
+      this.jwheel = w = { base: base, start: this.p, raw: this.p, w: this.iw(), prev: ax, down: 0, tail: false, low: Infinity };
+      this.hideHint();
+    }
+    const N = this.tracks.length;
+    w.raw = Math.max(w.base - 1, Math.min(w.base + 1, w.raw + dx / w.w));
+    let p = w.raw;
+    if (p < 0) p = -this.rubber(-p);
+    else if (p > N - 1) p = N - 1 + this.rubber(p - (N - 1));
+    this.p = p;
+    this.layoutJs();
+    clearTimeout(this.jwheelT);
+    this.jwheelT = setTimeout(() => this.jsEndWheel(), 150);
+  }
+
+  // The turn a wheel session asks for: one page from its base, in the direction it moved (more than 14%).
+  wheelTarget(w) {
+    const N = this.tracks.length;
+    const delta = w.raw - w.start;
+    let t = w.base;
+    if (delta > 0.14) t = w.base + 1;
+    else if (delta < -0.14) t = w.base - 1;
+    return Math.max(0, Math.min(N - 1, t));
+  }
+
+  jsEndWheel() {
+    const w = this.jwheel;
+    this.jwheel = null;
+    if (!w) return;
+    this.jsSpringTo(this.wheelTarget(w), 0);
+  }
+
+  jsGo(i) {
+    const N = this.tracks.length;
+    this.interacted = true;
+    if (this.jdrag && this.jdrag.axis === 'x') return;
+    if (i < 0 || i > N - 1) {
+      this.bump(i < 0 ? 1 : -1);
+      return;
+    }
+    this.hideHint();
+    const el = this.pageEls[i];
+    if (el && i > Math.round(this.p) + 1) el.scrollTop = 0;
+    this.jsSpringTo(i, this.janim ? this.janim.v : 0);
+  }
+
+  jsSpringTo(t, v) {
+    this.janim = { target: t, v: v || 0 };
+    if (!this.jraf) {
+      this.jlast = 0;
+      this.jraf = requestAnimationFrame(this.jsTick);
+    }
+  }
+
+  jsTick(now) {
+    this.jraf = 0;
+    const a = this.janim;
+    if (!a) return;
+    const dt = this.jlast ? Math.min(0.034, Math.max(0.001, (now - this.jlast) / 1000)) : 1 / 60;
+    this.jlast = now;
+    const r = this.stepSpring(this.p, a.v, a.target, dt);
+    this.p = r.x;
+    a.v = r.v;
+    if (r.done) {
+      this.janim = null;
+      this.jsSettle(a.target);
+      return;
+    }
+    // last 3% of a turn: the destination page takes touches (back turns, or both ways)
+    const dir = a.target < this.index ? 'back' : a.target > this.index ? 'fwd' : '';
+    this.jpass = !!dir && (this.passMode === 'both' || (this.passMode === 'back' && dir === 'back')) && Math.abs(this.p - a.target) < 0.03;
+    this.passDest = this.jpass ? a.target : -1;
+    this.layoutJs();
+    this.jraf = requestAnimationFrame(this.jsTick);
+  }
+
+  jsSettle(i) {
+    const N = this.tracks.length;
+    const k = Math.max(0, Math.min(N - 1, Math.round(i)));
+    this.p = k;
+    this.janim = null;
+    this.jpass = false;
+    this.passDest = -1;
+    this.layoutJs();
+    if (k !== this.index || this.st().index !== k) {
+      this.index = k;
+      this.setState({ index: k, hint: false });
+      if (this.stress) this.setStress(true);
+    }
+  }
+
+  // ---- passthrough, after scroll-gesture.js: in the last 3% of a turn the scroller and the page being
+  // left stop taking touches, so the next touch lands on the destination page right away ----
+
+  setPassMode(m) {
+    this.passMode = m === 'off' || m === 'both' ? m : 'back';
+    this.updatePassing();
+    return this.passMode;
+  }
+
+  setPassing(dest) {
+    if (dest === this.passDest) return;
+    const prev = this.pageEls[this.passDest];
+    if (prev && prev.classList) prev.classList.remove('is-dest');
+    this.passDest = dest;
+    const on = dest >= 0 && this.paging === 'native';
+    if (this.deck && this.deck.classList) this.deck.classList.toggle('df-passing', on);
+    const el = this.pageEls[dest];
+    if (on && el && el.classList) el.classList.add('is-dest');
+  }
+
+  // Native paging: the pages live inside the scroller, so a touch on the destination can still stop the snap
+  // (iOS does). If the deck stops moving right after a touch in the last 3%, finish the turn at once.
+  watchPass() {
+    const d = this.deck;
+    if (!d) return;
+    const dest = this.passDest;
+    const at = d.scrollLeft;
+    clearTimeout(this.passT);
+    this.passT = setTimeout(() => {
+      if (this.passDest !== dest || this.paging !== 'native' || this.drag) return;
+      const now = d.scrollLeft;
+      if (Math.abs(now - at) < 0.5 && Math.abs(now - dest * this.W) > 0.5) {
+        const prev = d.style.scrollBehavior;
+        d.style.scrollBehavior = 'auto';
+        d.scrollLeft = dest * this.W;
+        d.style.scrollBehavior = prev;
+        this.passFinished = (this.passFinished || 0) + 1;
+      }
+    }, 60);
+  }
+
+  updatePassing() {
+    if (this.paging !== 'native' || this.passMode === 'off') {
+      this.setPassing(-1);
+      return;
+    }
+    const p = this.p;
+    const rest = this.index;
+    let dest = -1;
+    if (p < rest - 0.0001) {
+      const n = Math.floor(p + 0.000001);
+      if (p - n < 0.03) dest = n;
+    } else if (p > rest + 0.0001 && this.passMode === 'both') {
+      const n = Math.ceil(p - 0.000001);
+      if (n - p < 0.03) dest = n;
+    }
+    this.setPassing(dest);
   }
 
   onClickCapture(e) {
@@ -1242,6 +1681,7 @@ class Component extends DCLogic {
 }
 
 const comp = DC.mount(Component, document.getElementById('device'), document.getElementById('dc-template'), {"exitBlur":40,"exitScale":0.88,"exitDrop":28,"ghost":0.75,"accent":"#D7F25A"});
+window.__dfDemo = comp;
 
 // Fit the 390×844 frame to the window.
 const frame = document.getElementById('frame');
@@ -1285,8 +1725,23 @@ document.querySelectorAll('[data-prop]').forEach((input) => {
 const modeBtns = document.querySelectorAll('[data-mode]');
 function showMode(m) { modeBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === m))); }
 modeBtns.forEach((b) => b.addEventListener('click', () => showMode(comp.setMode(b.dataset.mode))));
-showMode(comp.mode);
-if (!comp.tl) modeBtns[0].title = '这个浏览器不支持滚动时间线，会退回 JS';
+// Paging engine: native scrolling (compositor) or JS gestures (pointer events + a spring on the main thread).
+// JS paging has no scroll position, so the scroll-driven CSS mode is not available there.
+const pagingBtns = document.querySelectorAll('[data-paging]');
+const tlBtn = document.querySelector('[data-mode="timeline"]');
+function showPaging() {
+  pagingBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.paging === comp.paging)));
+  tlBtn.disabled = !comp.tl || comp.paging === 'js';
+  tlBtn.title = !comp.tl ? '这个浏览器不支持滚动时间线' : comp.paging === 'js' ? 'JS 手势翻页没有滚动位置，滚动时间线用不了' : '';
+  showMode(comp.mode);
+}
+pagingBtns.forEach((b) => b.addEventListener('click', () => { comp.setPaging(b.dataset.paging); showPaging(); }));
+showPaging();
+// The last 3% of a turn lets touches through to the destination page (off / back turns / both ways).
+const passBtns = document.querySelectorAll('[data-pass]');
+function showPass() { passBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pass === comp.passMode))); }
+passBtns.forEach((b) => b.addEventListener('click', () => { comp.setPassMode(b.dataset.pass); showPass(); }));
+showPass();
 // Auto paging, so the modes can be compared without swiping.
 let autoT = 0;
 let dir = 1;
@@ -1311,12 +1766,13 @@ stressBtn.addEventListener('click', () => {
 // What is actually driving the blur right now, and how often JS writes it.
 const diagEl = document.getElementById('diag');
 const how = { timeline: 'CSS 滚动驱动 · 跟手（JS 不参与）', transition: 'CSS 过渡 · 按时间播放（JS 只在越过阈值时切一次 class）', js: 'JS 每帧写 filter（有 will-change）', nolayer: 'JS 每帧写 filter（无 will-change）', backdrop: 'JS 每帧写 backdrop-filter' };
+const pagingHow = { native: '原生滚动 + 吸附（浏览器负责）', js: 'JS 手势 + 弹簧（主线程每帧写 transform）' };
 setInterval(() => {
   const w = comp.jsWrites;
   comp.jsWrites = 0;
-  diagEl.innerHTML = '当前：<b>' + how[comp.mode] + '</b> · JS 写入 <b>' + w + '</b> 次/秒' +
+  diagEl.innerHTML = '翻页：<b>' + pagingHow[comp.paging] + '</b> · 下沉+模糊：<b>' + how[comp.mode] + '</b> · JS 写入 <b>' + w + '</b> 次/秒' +
     (loadMs ? ' · 主线程负载 <b>+' + loadMs + 'ms</b>/帧' : '') +
-    (comp.tl ? '' : ' · 此浏览器不支持滚动时间线，"CSS 跟手"会退回 JS');
+    (comp.tl ? '' : ' · 此浏览器不支持滚动时间线');
 }, 1000);
 // Refresh-rate check by eye: one dot moved by a CSS animation (compositor), one by JS every rAF
 // (main thread). JS reads the CSS animation's own clock, so both are always at the same position.

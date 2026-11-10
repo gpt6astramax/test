@@ -5,6 +5,8 @@
 const path = require('path');
 const pw = require(process.env.PLAYWRIGHT || 'playwright');
 const engine = process.env.BROWSER || 'chromium';   // chromium | webkit
+// Playwright's WebKit turns one page per wheel event; Chrome needs a short trackpad-like burst
+const burst = engine === 'webkit' ? 1 : 5;
 const file = 'file://' + path.resolve(process.argv[2]);
 const out = process.argv[3];
 const failures = [];
@@ -42,7 +44,7 @@ const deckLeft = (page) => page.evaluate(() => document.querySelector('[data-df-
     await page.screenshot({ path: out + '/1-rest.png' });
 
     await page.mouse.move(cx, cy);
-    for (let i = 0; i < 5; i++) { await page.mouse.wheel(70, 0); await page.waitForTimeout(8); }
+    for (let i = 0; i < burst; i++) { await page.mouse.wheel(70, 0); await page.waitForTimeout(8); }
     await page.waitForTimeout(1000);
     check(await counter(page) === '02/11', 'trackpad-style horizontal wheel snaps to page 2 (' + (await counter(page)) + ')');
     const g = await pageStyle(page, 0);
@@ -140,7 +142,7 @@ const deckLeft = (page) => page.evaluate(() => document.querySelector('[data-df-
     const { ctx, page, errors } = await open(browser, { viewport: { width: 1280, height: 920 } }, true);
     const box = await page.locator('#device').boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.45);
-    for (let i = 0; i < 5; i++) { await page.mouse.wheel(70, 0); await page.waitForTimeout(8); }
+    for (let i = 0; i < burst; i++) { await page.mouse.wheel(70, 0); await page.waitForTimeout(8); }
     await page.waitForTimeout(1000);
     const g = await pageStyle(page, 0);
     check(await counter(page) === '02/11' && Math.abs(g.opacity - 0.75) < 0.02 && /blur\(40px\)/.test(g.filter), 'JS fallback: page 2 with residue ' + g.opacity + ' ' + g.filter);
