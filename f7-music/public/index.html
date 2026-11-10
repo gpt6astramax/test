@@ -17,7 +17,61 @@
   <link rel="icon" href="icons/favicon.png">
   <link rel="manifest" href="manifest.json">
   <!-- built styles file will be auto injected -->
-  <script type="module" crossorigin src="./assets/index-BuUaVzFN.js"></script>
+
+  <!-- The height of the whole screen. Framework7 gives html and body 100vh when the app runs from the home screen
+       under the translucent status bar. On this iOS that is not the whole screen: 100vh comes out short by the top
+       safe area, so the real height is 100vh + env(safe-area-inset-top). The rule below overrides Framework7's only
+       when a height has been chosen; which one is decided by the script (and can be switched on the last tab). -->
+  <style>html.full-h{height:var(--full-h)!important}html.full-h body{height:100%!important}</style>
+  <script>
+    (function () {
+      var d = document.documentElement;
+      var ua = navigator.userAgent;
+      var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      var standalone = function () { return navigator.standalone === true || !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches); };
+      var HEIGHTS = {
+        f7: null,                                                   // leave Framework7's own rule alone
+        'vh+top': 'calc(100vh + env(safe-area-inset-top, 0px))',
+        '100%+top': 'calc(100% + env(safe-area-inset-top, 0px))',
+        screen: 'screen',
+        '100%': '100%'
+      };
+      function read() {
+        var p = document.createElement('div');
+        p.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:0;height:100vh;padding-top:env(safe-area-inset-top,0px)';
+        d.appendChild(p);
+        var cs = getComputedStyle(p), r = { vh: parseFloat(cs.height) || 0, top: parseFloat(cs.paddingTop) || 0 };
+        d.removeChild(p);
+        var w = screen.width, h = screen.height;
+        r.screen = window.innerWidth > window.innerHeight ? Math.min(w, h) : Math.max(w, h);
+        return r;
+      }
+      function apply() {
+        var mode = 'auto';
+        try { mode = localStorage.getItem('f7-music-height') || 'auto'; } catch (e) { /* storage blocked */ }
+        var r = read(), used = mode;
+        if (mode === 'auto') {
+          // from the home screen on iOS: when 100vh + the top safe area is exactly the screen, 100vh is the short one
+          used = ios && standalone() && r.top > 0 && Math.abs(r.vh + r.top - r.screen) <= 2 ? 'vh+top' : 'f7';
+        }
+        var h = HEIGHTS[used];
+        if (h === 'screen') h = r.screen + 'px';
+        if (h) { d.style.setProperty('--full-h', h); d.classList.add('full-h'); }
+        else { d.style.removeProperty('--full-h'); d.classList.remove('full-h'); }
+        window.__height = { mode: mode, used: used, value: h || 'Framework7 的规则', vh: r.vh, top: r.top, screen: r.screen };
+        return window.__height;
+      }
+      window.__setHeight = function (mode) {
+        try { localStorage.setItem('f7-music-height', mode); } catch (e) { /* storage blocked */ }
+        return apply();
+      };
+      apply();
+      window.addEventListener('resize', apply);
+      window.addEventListener('orientationchange', function () { setTimeout(apply, 300); });
+      window.addEventListener('pageshow', apply);
+    })();
+  </script>
+  <script type="module" crossorigin src="./assets/index-BEK_b_5Q.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-DVeqUrKm.css">
 </head>
 <body>

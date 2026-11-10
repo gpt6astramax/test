@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Page, Navbar, Block, BlockTitle, BlockFooter, List, ListItem, Toggle, f7 } from 'framework7-react';
+import { Page, Navbar, Block, BlockTitle, BlockFooter, Button, List, ListItem, Segmented, Toggle, f7 } from 'framework7-react';
 import { TRACKS } from '../js/data';
 
 // What the phone reports about the screen, read the way a page can read it: useful when the app is opened from the
@@ -33,6 +33,9 @@ function measure() {
     visual: window.visualViewport ? `${Math.round(window.visualViewport.width)} × ${Math.round(window.visualViewport.height)}，偏移 ${Math.round(window.visualViewport.offsetTop)}` : '?',
     ua: ((navigator.userAgent.match(/(iPhone|iPad|Macintosh|Android)[^)]*\)/) || [''])[0] + ' ' + (navigator.userAgent.match(/Version\/[\d.]+/) || [''])[0]).trim(),
     url: window.location.pathname,
+    htmlH: Math.round(document.documentElement.getBoundingClientRect().height),
+    scroll: `${Math.round(window.scrollY)} / ${Math.round(document.body.scrollTop)}`,
+    height: window.__height || {},
   };
 }
 
@@ -64,6 +67,22 @@ const SettingsPage = () => {
       </List>
       <BlockFooter>用的是 Framework7 自带的 setDarkMode，没有额外处理。</BlockFooter>
 
+      <BlockTitle>整屏高度怎么算</BlockTitle>
+      <Block strong inset>
+        <Segmented strong>
+          {[['auto', '自动'], ['f7', 'F7 原样'], ['vh+top', '100vh+上'], ['100%+top', '100%+上'], ['screen', 'screen']].map(([id, label]) => (
+            <Button key={id} small active={(m.height.mode || 'auto') === id} onClick={() => { window.__setHeight(id); setTimeout(() => setM(measure()), 60); }}>
+              {label}
+            </Button>
+          ))}
+        </Segmented>
+        <p style={{ marginBottom: 0 }}>
+          现在用的是：<b>{m.height.used === 'f7' ? 'Framework7 原样（主屏幕模式下是 100vh）' : m.height.value}</b>
+          。切一下就能看出哪一种把屏幕铺满；选择会记住。
+        </p>
+      </Block>
+      <BlockFooter>“自动”：从主屏幕打开、并且 100vh + 上安全区正好等于屏幕高度时，用 100vh + 上安全区，否则保持 Framework7 原样。</BlockFooter>
+
       <BlockTitle>这个 demo</BlockTitle>
       <Block strong inset>
         <p>
@@ -82,6 +101,8 @@ const SettingsPage = () => {
         <ListItem title="安全区 上 / 下" after={`${m.top} / ${m.bottom}`} />
         <ListItem title="innerWidth × innerHeight" after={m.inner} />
         <ListItem title="100vh" after={`${m.vh}px`} />
+        <ListItem title="html 的实际高度" after={`${m.htmlH}px`} />
+        <ListItem title="整页滚动 window / body" after={m.scroll} />
         <ListItem title="#app 的大小" after={m.app} />
         <ListItem title="screen" after={m.screen} />
         <ListItem title="visualViewport" after={m.visual} />
