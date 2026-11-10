@@ -1,0 +1,30 @@
+/* Only this app's own content is styled here. The shell (root, views, pages, bars, safe areas) is Framework7's and is
+   left exactly as it comes. */
+
+.cover {
+  display: block;
+  border-radius: 10px;
+  background: #1c1c1e center / cover;
+  flex-shrink: 0;
+}
+.cover-row { width: 52px; height: 52px; }
+.cover-feature { width: 100%; aspect-ratio: 1.7; border-radius: 16px; }
+.cover-hero { width: 62%; aspect-ratio: 1; border-radius: 18px; margin: 8px 0 16px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.18); }
+.cover-disc { width: 84px; height: 84px; border-radius: 50%; }
+
+.track-title { font-size: 30px; font-weight: 700; line-height: 1.1; margin: 0 0 4px; }
+.track-by { font-size: 17px; opacity: 0.6; margin: 0; }
+.eyebrow { font-size: 13px; opacity: 0.55; margin: 0 0 4px; letter-spacing: 0.04em; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.who { display: flex; align-items: center; gap: 16px; }
+
+.mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.item-after.mono { font-size: 13px; }
+
+.mosaic { display: grid; grid-template-columns: 1fr 1fr; width: 52px; height: 52px; border-radius: 10px; overflow: hidden; flex-shrink: 0; }
+.mosaic i { background-position: center; background-size: cover; }
+
+.debug .item-title { font-size: 14px; }
+.debug .item-after { font-size: 13px; max-width: 62%; text-align: right; white-space: normal; word-break: break-all; }
