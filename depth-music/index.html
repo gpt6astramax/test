@@ -4,8 +4,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="景深翻页">
+<!-- home-screen app: the page draws under a transparent status bar and fills the whole screen -->
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<meta name="theme-color" content="#f2f2f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<script>
+/* Device classes on <html>, detected the way Framework7 does. device-full-viewport = iPhone / iPad home-screen app with
+   the translucent status bar: there height:100%, bottom:0 on fixed elements and innerHeight all stop short of the
+   screen by the status bar's height, while 100vh is the whole screen. */
+(function () {
+  var html = document.documentElement, ua = navigator.userAgent;
+  var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  var standalone = navigator.standalone === true || !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  var bar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+  html.classList.add(ios ? 'device-ios' : /Android/.test(ua) ? 'device-android' : 'device-desktop');
+  if (standalone) html.classList.add('device-standalone');
+  if (ios && standalone && bar && bar.content === 'black-translucent') html.classList.add('device-full-viewport');
+})();
+</script>
+<style>
+/* The page takes the whole screen, edge to edge. The safe areas (status bar, home indicator; the same env() values on
+   iPhone and iPad, whatever the model) are not padded off the root: they are handed to the page as --sat / --sab and
+   subtracted where content must stay clear of them. */
+:root{color-scheme:light;--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px)}
+html,body{position:fixed;top:0;left:0;right:0;bottom:0;margin:0;overscroll-behavior:none}
+html.device-full-viewport,html.device-full-viewport body{height:100vh!important;bottom:auto}
+[hidden]{display:none!important}
+</style>
 <title>景深翻页</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
@@ -52,6 +79,7 @@ html.theming *,html.theming *::before,html.theming *::after{transition:backgroun
 input[type="search"]{-webkit-user-select:text;user-select:text}
 html{touch-action:pan-x pan-y}
 html,body{height:100%;overflow:hidden}
+html{background:var(--bg)}   /* the browser tints its own bars from the page's ground */
 body{background:var(--bg);color:var(--fg);font-family:var(--text);font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased}
 h1,h2,p,dl,dd,ul{margin:0;padding:0}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.01em}
@@ -65,14 +93,15 @@ svg.ic.i-sun{display:var(--sun)}
 svg.ic.i-moon{display:var(--moon)}
 
 /* ---- the ground: fixed, one plain tone. It never moves and takes no colour. ---- */
-.backdrop{position:fixed;inset:0;overflow:hidden;background:var(--bg)}
+.backdrop{position:fixed;top:0;left:0;right:0;height:100%;overflow:hidden;background:var(--bg)}
+html.device-full-viewport .backdrop{height:100vh}   /* home-screen app on iOS: 100% stops short of the screen */
 .backdrop::before{content:"";position:absolute;inset:0;background:var(--paper)}
 .backdrop::after{content:"";position:absolute;inset:0;opacity:var(--grain);mix-blend-mode:soft-light;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
 
 /* ---- frame ---- */
-.app{position:relative;height:100%;max-width:460px;margin:0 auto;--chrome:84px}   /* --chrome: what floats at the bottom */
-.app.has-bar{--chrome:150px}
+.app{position:relative;height:100%;max-width:460px;margin:0 auto;--chrome:76px}   /* --chrome: what floats above the bottom safe area */
+.app.has-bar{--chrome:142px}
 .views,.tabview{position:absolute;inset:0}
 @media (min-width:500px){.views{-webkit-mask-image:linear-gradient(90deg,transparent,#000 32px,#000 calc(100% - 32px),transparent);mask-image:linear-gradient(90deg,transparent,#000 32px,#000 calc(100% - 32px),transparent)}}
 /* tabs cross-fade; the one you leave drops back out of focus */
@@ -100,13 +129,14 @@ svg.ic.i-moon{display:var(--moon)}
 /* a page: content only, no ground of its own. It fades towards the status bar; at the bottom it runs on under the
    play bar and the tab row, where the haze blurs it. */
 .page{flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:none;
-  --m:linear-gradient(to bottom,transparent 0,#000 var(--fade-top,22px));
+  --m:linear-gradient(to bottom,transparent 0,transparent calc(var(--sat,0px) * .4),#000 calc(var(--sat,0px) + var(--fade-top,22px)));
   -webkit-mask-image:var(--m);mask-image:var(--m)}
 .page::-webkit-scrollbar{display:none}
-.page-in{display:flex;flex-direction:column;gap:28px;padding:18px var(--gutter-r) calc(var(--chrome) + 56px) var(--gutter-l);min-height:100%}
+.page-in{display:flex;flex-direction:column;gap:28px;min-height:100%;
+  padding:calc(var(--sat,0px) + 18px) var(--gutter-r) calc(var(--sab,0px) + var(--chrome) + 56px) var(--gutter-l)}
 .layer:not(.root) .page{--fade-top:60px}
-.layer:not(.root) .page-in{padding-top:66px}
-.nav{position:absolute;z-index:2;top:10px;left:var(--gutter-l);right:var(--gutter-r);display:flex;justify-content:space-between;pointer-events:none}
+.layer:not(.root) .page-in{padding-top:calc(var(--sat,0px) + 66px)}
+.nav{position:absolute;z-index:2;top:calc(var(--sat,0px) + 10px);left:var(--gutter-l);right:var(--gutter-r);display:flex;justify-content:space-between;pointer-events:none}
 .nav .tap{pointer-events:auto}
 .round{width:42px;height:42px;border-radius:50%;display:grid;place-items:center}
 .glass{background:var(--glass);border:1px solid var(--glass-edge);box-shadow:var(--lift);
@@ -230,7 +260,7 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
 
 /* ---- floating chrome ---- */
 .chrome{position:absolute;z-index:5;left:var(--gutter-l);right:var(--gutter-r);
-  bottom:calc(max(env(safe-area-inset-bottom, 0px) - 4px, 30px) - env(safe-area-inset-bottom, 0px));   /* 30 px clear of the screen's edge: the blur ends above it */
+  bottom:max(var(--sab,0px) - 4px, 30px);   /* above the home indicator, at least 30 px clear of the edge: the blur ends above it */
   display:flex;flex-direction:column;gap:8px}
 .shell{position:relative;border-radius:20px;overflow:hidden;display:none}
 .app.has-bar .shell{display:block}
@@ -251,19 +281,19 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
 @keyframes pl-swap{from{opacity:0;transform:translateX(calc(var(--from) * 16px))}to{opacity:1;transform:none}}
 .pl-body.swap>*{animation:pl-swap .32s ease both}
 
-/* the tab row: icons only, the current one in full ink with a dot under it. The dot is the glider: it springs to a
+/* the tab row: icons only, centred in the row, the current one in full ink with a dot under it. The dot is the glider: it springs to a
    tapped tab and trails a finger dragged along the row. Held, it is pulled into a flat ellipse; moving, it stretches
    along its path the faster it goes (--sx / --sy, set by the spring). */
-.tabs{position:relative;display:flex;height:50px;--gl-inset:0px;touch-action:none}
-.tabs .gl-item{position:relative;flex:1;display:grid;place-items:center;padding-bottom:12px;color:var(--fg3);cursor:pointer;transition:color .2s}
+.tabs{position:relative;display:flex;height:44px;--gl-inset:0px;touch-action:none}
+.tabs .gl-item{position:relative;flex:1;display:grid;place-items:center;color:var(--fg3);cursor:pointer;transition:color .2s}
 .tabs .gl-item.on{color:var(--fg)}
-.tabs .gl-ink{top:auto;bottom:3px;height:6px;border-radius:0;background:none}
+.tabs .gl-ink{top:auto;bottom:-5px;height:6px;border-radius:0;background:none}   /* under the icons, at the capsule's lower edge */
 .tabs .gl-ink::after{content:"";position:absolute;left:50%;top:0;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--fg);
   transform:scale(var(--sx,1),var(--sy,1))}
-/* the haze: no fill, no border, no shadow, only blur. A slim capsule behind the icons and the dot is fully blurred;
+/* the haze: no fill, no border, no shadow, only blur. A slim capsule centred on the icons is fully blurred;
    from there it clears in every direction (two half discs for the ends, a band between them), and it is clear
    again before the screen's bottom edge. */
-.haze{position:absolute;z-index:-1;left:-16px;right:-16px;top:-19px;height:92px;pointer-events:none;
+.haze{position:absolute;z-index:-1;left:-16px;right:-16px;top:-24px;height:92px;pointer-events:none;   /* centred on the icons */
   -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
   --hz:radial-gradient(circle 46px at 100% 50%,#000 20px,rgb(0 0 0/.45) 32px,transparent 46px) left center/46px 100% no-repeat,
        radial-gradient(circle 46px at 0 50%,#000 20px,rgb(0 0 0/.45) 32px,transparent 46px) right center/46px 100% no-repeat,
@@ -1261,12 +1291,26 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
     el.textContent = msg; el.classList.add('on');
     clearTimeout(toastT); toastT = setTimeout(function () { el.classList.remove('on'); }, 1800);
   }
+  // The browser paints its own bars (the status bar, Safari's toolbar) in <meta name="theme-color">, or failing
+  // that in what it samples from the page. Keep that colour on the theme's ground: at start, on every switch, when
+  // the system switches, and when a host page sets data-theme.
+  function syncBars() {
+    var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    if (!bg) return;
+    var metas = $$('meta[name="theme-color"]');
+    if (!metas.length) { var m = document.createElement('meta'); m.name = 'theme-color'; document.head.appendChild(m); metas = [m]; }
+    metas.forEach(function (el) { el.media = ''; el.content = bg; });
+  }
+  syncBars();
+  try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncBars); } catch (e) { /* old Safari: addListener only */ }
+  if (typeof MutationObserver === 'function') new MutationObserver(syncBars).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
   // Light <-> dark, never as a jump: the new theme spreads out in a circle from the button (about 820 ms). Where
   // there are no view transitions, every colour cross-fades.
   function switchTheme(el) {
     var root = document.documentElement, at = root.getAttribute('data-theme');
     var dark = at ? at === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-    var apply = function () { root.setAttribute('data-theme', dark ? 'light' : 'dark'); };
+    var apply = function () { root.setAttribute('data-theme', dark ? 'light' : 'dark'); syncBars(); };
     if (reduced()) { apply(); return; }
     if (document.startViewTransition) {
       var r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
@@ -1329,7 +1373,7 @@ svg.ic.i-pause,.is-playing svg.ic.i-play{display:none}
 })();
 </script>
 <style>
-#toast{position:absolute;z-index:6;left:50%;bottom:calc(var(--chrome) + 14px);transform:translate(-50%,10px);padding:9px 16px;border-radius:999px;
+#toast{position:absolute;z-index:6;left:50%;bottom:calc(var(--sab,0px) + var(--chrome) + 14px);transform:translate(-50%,10px);padding:9px 16px;border-radius:999px;
   font-size:13.5px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .25s,transform .35s var(--spring)}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 </style>
