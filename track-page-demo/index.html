@@ -67,6 +67,10 @@ html,body{overscroll-behavior:none}
 .df-page{position:-webkit-sticky;position:sticky;left:0;flex:0 0 390px;width:390px;height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:none;transform-origin:50% 46%;will-change:transform,filter,opacity}
 .df-page::-webkit-scrollbar{display:none}
 .df-nolayer .df-page{will-change:auto}
+/* time-based mode: crossing a threshold flips a class once; the transition itself plays frame by frame in CSS */
+.df-tr .df-page{transform:translate3d(0,0,0) scale(1);filter:blur(0px) brightness(1);opacity:1;transition:transform .45s cubic-bezier(.22,.7,.25,1),filter .45s cubic-bezier(.22,.7,.25,1),opacity .45s cubic-bezier(.22,.7,.25,1)}
+.df-tr .df-page.is-sunk{transform:translate3d(0,var(--sink-drop,28px),0) scale(var(--sink-scale,.88));filter:blur(var(--sink-blur,40px)) brightness(.82);opacity:var(--ghost,.75)}
+.df-tr .df-page.is-gone{transform:translate3d(0,calc(var(--sink-drop,28px) * 1.5),0) scale(calc(var(--sink-scale,.88) - .05));filter:blur(calc(var(--sink-blur,40px) * 1.3)) brightness(.6);opacity:0}
 /* stress test in CSS mode: a time-based animation of the blur radius */
 @keyframes df-breathe{from{filter:blur(0px)}to{filter:blur(var(--sink-blur,40px))}}
 .df-page.df-breathe{animation:df-breathe .8s ease-in-out infinite alternate!important;animation-timeline:auto!important;animation-range:normal!important}
@@ -158,7 +162,7 @@ html,body{overscroll-behavior:none}
 <body>
 <div class="modebar" id="modebar">
 <div class="mrow">
-<div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">CSS 时间线</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
+<div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">CSS 跟手</button><button type="button" data-mode="transition">CSS 按时间</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
 <div class="seg" role="group" aria-label="主线程负载"><span class="seglab">主线程负载</span><button type="button" data-load="0">无</button><button type="button" data-load="20">+20ms</button><button type="button" data-load="50">+50ms</button><button type="button" data-load="120">+120ms</button></div>
 <button type="button" class="mb" id="block">阻塞 3 秒</button>
 <button type="button" class="mb" id="auto" aria-pressed="false">自动翻页</button>
@@ -472,6 +476,7 @@ class Component extends DCLogic {
     this.stressEl = null;
     this.stressGlass = null;
     this.jsWrites = 0;
+    this.trState = [];
     this.bound = null;
     this.refRoot = (el) => { this.root = el; };
     this.refDeck = (el) => { this.deck = el; };
@@ -776,7 +781,8 @@ class Component extends DCLogic {
     this.bound = null;
   }
 
-  // How the sink effect is drawn: 'timeline' (scroll-driven CSS animation), 'js' (JS writes
+  // How the sink effect is drawn: 'timeline' (scroll-driven CSS animation, follows the finger),
+  // 'transition' (time-based CSS transition, started by one class flip at a threshold), 'js' (JS writes
   // filter: blur() every frame on pages promoted with will-change), 'nolayer' (the same, without
   // will-change) or 'backdrop' (JS writes the backdrop-filter of a glass layer every frame).
   setMode(mode, quiet) {
@@ -789,8 +795,17 @@ class Component extends DCLogic {
       this.root.classList.toggle('df-js-thumb', !this.supThumb);
       this.root.classList.toggle('df-nolayer', mode === 'nolayer');
       this.root.classList.toggle('df-bd', mode === 'backdrop');
+      this.root.classList.toggle('df-tr', mode === 'transition');
     }
-    this.pageEls.forEach((el) => { if (el && el.style) { el.style.transform = ''; el.style.filter = ''; el.style.opacity = ''; } });
+    this.pageEls.forEach((el) => {
+      if (el && el.style) {
+        el.style.transform = '';
+        el.style.filter = '';
+        el.style.opacity = '';
+        if (el.classList) el.classList.remove('is-sunk', 'is-gone');
+      }
+    });
+    this.trState = [];
     this.glassEls.forEach((g) => { if (g && g.style) { g.style.display = ''; g.style.backdropFilter = ''; g.style.webkitBackdropFilter = ''; } });
     if (!quiet) this.paint();
     if (this.stress) this.setStress(true);
@@ -821,7 +836,7 @@ class Component extends DCLogic {
     const el = this.pageEls[this.index];
     if (!el) return;
     this.stressEl = el;
-    if (this.mode === 'timeline') {
+    if (this.mode === 'timeline' || this.mode === 'transition') {
       el.classList.add('df-breathe');
       return;
     }
@@ -888,17 +903,28 @@ class Component extends DCLogic {
       const el = this.pageEls[i];
       if (!el || !el.style) continue;
       const k = p - i;
-      const vis = k < 1.999;
+      const vis = k < (this.mode === 'transition' ? 2.999 : 1.999);
       if (vis !== this.vis[i]) {
         this.vis[i] = vis;
         el.style.visibility = vis ? '' : 'hidden';
       }
       if (k <= -0.999 && el.scrollTop) el.scrollTop = 0;
-      if (!this.sup) this.sinkStyle(el, k, i);
+      if (this.mode === 'transition') this.trStyle(el, k, i);
+      else if (!this.sup) this.sinkStyle(el, k, i);
     }
     if (this.thumb && this.thumb.style && !this.supThumb) {
       this.thumb.style.transform = 'translateX(' + (Math.max(0, Math.min(N - 1, p)) * 10).toFixed(2) + 'px)';
     }
+  }
+
+  // Time-based mode: decide the state from the position, flip a class only when it changes.
+  trStyle(el, k, i) {
+    const state = k > 1.15 ? 'gone' : k > 0.15 ? 'sunk' : '';
+    if (this.trState[i] === state || !el.classList) return;
+    this.trState[i] = state;
+    el.classList.toggle('is-sunk', state === 'sunk');
+    el.classList.toggle('is-gone', state === 'gone');
+    this.jsWrites++;
   }
 
   sinkStyle(el, k, i) {
@@ -1284,13 +1310,13 @@ stressBtn.addEventListener('click', () => {
 });
 // What is actually driving the blur right now, and how often JS writes it.
 const diagEl = document.getElementById('diag');
-const how = { timeline: 'CSS 动画驱动 filter', js: 'JS 每帧写 filter（有 will-change）', nolayer: 'JS 每帧写 filter（无 will-change）', backdrop: 'JS 每帧写 backdrop-filter' };
+const how = { timeline: 'CSS 滚动驱动 · 跟手（JS 不参与）', transition: 'CSS 过渡 · 按时间播放（JS 只在越过阈值时切一次 class）', js: 'JS 每帧写 filter（有 will-change）', nolayer: 'JS 每帧写 filter（无 will-change）', backdrop: 'JS 每帧写 backdrop-filter' };
 setInterval(() => {
   const w = comp.jsWrites;
   comp.jsWrites = 0;
   diagEl.innerHTML = '当前：<b>' + how[comp.mode] + '</b> · JS 写入 <b>' + w + '</b> 次/秒' +
     (loadMs ? ' · 主线程负载 <b>+' + loadMs + 'ms</b>/帧' : '') +
-    (comp.tl ? '' : ' · 此浏览器不支持滚动时间线，CSS 档会退回 JS');
+    (comp.tl ? '' : ' · 此浏览器不支持滚动时间线，"CSS 跟手"会退回 JS');
 }, 1000);
 // Refresh-rate check by eye: one dot moved by a CSS animation (compositor), one by JS every rAF
 // (main thread). JS reads the CSS animation's own clock, so both are always at the same position.

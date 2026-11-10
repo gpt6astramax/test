@@ -27,6 +27,10 @@ html,body{overscroll-behavior:none}
 .df-page{position:-webkit-sticky;position:sticky;left:0;flex:0 0 390px;width:390px;height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-width:none;transform-origin:50% 46%;will-change:transform,filter,opacity}
 .df-page::-webkit-scrollbar{display:none}
 .df-nolayer .df-page{will-change:auto}
+/* time-based mode: crossing a threshold flips a class once; the transition itself plays frame by frame in CSS */
+.df-tr .df-page{transform:translate3d(0,0,0) scale(1);filter:blur(0px) brightness(1);opacity:1;transition:transform .45s cubic-bezier(.22,.7,.25,1),filter .45s cubic-bezier(.22,.7,.25,1),opacity .45s cubic-bezier(.22,.7,.25,1)}
+.df-tr .df-page.is-sunk{transform:translate3d(0,var(--sink-drop,28px),0) scale(var(--sink-scale,.88));filter:blur(var(--sink-blur,40px)) brightness(.82);opacity:var(--ghost,.75)}
+.df-tr .df-page.is-gone{transform:translate3d(0,calc(var(--sink-drop,28px) * 1.5),0) scale(calc(var(--sink-scale,.88) - .05));filter:blur(calc(var(--sink-blur,40px) * 1.3)) brightness(.6);opacity:0}
 /* stress test in CSS mode: a time-based animation of the blur radius */
 @keyframes df-breathe{from{filter:blur(0px)}to{filter:blur(var(--sink-blur,40px))}}
 .df-page.df-breathe{animation:df-breathe .8s ease-in-out infinite alternate!important;animation-timeline:auto!important;animation-range:normal!important}
@@ -301,6 +305,7 @@ class Component extends DCLogic {
     this.stressEl = null;
     this.stressGlass = null;
     this.jsWrites = 0;
+    this.trState = [];
     this.bound = null;
     this.refRoot = (el) => { this.root = el; };
     this.refDeck = (el) => { this.deck = el; };
@@ -605,7 +610,8 @@ class Component extends DCLogic {
     this.bound = null;
   }
 
-  // How the sink effect is drawn: 'timeline' (scroll-driven CSS animation), 'js' (JS writes
+  // How the sink effect is drawn: 'timeline' (scroll-driven CSS animation, follows the finger),
+  // 'transition' (time-based CSS transition, started by one class flip at a threshold), 'js' (JS writes
   // filter: blur() every frame on pages promoted with will-change), 'nolayer' (the same, without
   // will-change) or 'backdrop' (JS writes the backdrop-filter of a glass layer every frame).
   setMode(mode, quiet) {
@@ -618,8 +624,17 @@ class Component extends DCLogic {
       this.root.classList.toggle('df-js-thumb', !this.supThumb);
       this.root.classList.toggle('df-nolayer', mode === 'nolayer');
       this.root.classList.toggle('df-bd', mode === 'backdrop');
+      this.root.classList.toggle('df-tr', mode === 'transition');
     }
-    this.pageEls.forEach((el) => { if (el && el.style) { el.style.transform = ''; el.style.filter = ''; el.style.opacity = ''; } });
+    this.pageEls.forEach((el) => {
+      if (el && el.style) {
+        el.style.transform = '';
+        el.style.filter = '';
+        el.style.opacity = '';
+        if (el.classList) el.classList.remove('is-sunk', 'is-gone');
+      }
+    });
+    this.trState = [];
     this.glassEls.forEach((g) => { if (g && g.style) { g.style.display = ''; g.style.backdropFilter = ''; g.style.webkitBackdropFilter = ''; } });
     if (!quiet) this.paint();
     if (this.stress) this.setStress(true);
@@ -650,7 +665,7 @@ class Component extends DCLogic {
     const el = this.pageEls[this.index];
     if (!el) return;
     this.stressEl = el;
-    if (this.mode === 'timeline') {
+    if (this.mode === 'timeline' || this.mode === 'transition') {
       el.classList.add('df-breathe');
       return;
     }
@@ -717,17 +732,28 @@ class Component extends DCLogic {
       const el = this.pageEls[i];
       if (!el || !el.style) continue;
       const k = p - i;
-      const vis = k < 1.999;
+      const vis = k < (this.mode === 'transition' ? 2.999 : 1.999);
       if (vis !== this.vis[i]) {
         this.vis[i] = vis;
         el.style.visibility = vis ? '' : 'hidden';
       }
       if (k <= -0.999 && el.scrollTop) el.scrollTop = 0;
-      if (!this.sup) this.sinkStyle(el, k, i);
+      if (this.mode === 'transition') this.trStyle(el, k, i);
+      else if (!this.sup) this.sinkStyle(el, k, i);
     }
     if (this.thumb && this.thumb.style && !this.supThumb) {
       this.thumb.style.transform = 'translateX(' + (Math.max(0, Math.min(N - 1, p)) * 10).toFixed(2) + 'px)';
     }
+  }
+
+  // Time-based mode: decide the state from the position, flip a class only when it changes.
+  trStyle(el, k, i) {
+    const state = k > 1.15 ? 'gone' : k > 0.15 ? 'sunk' : '';
+    if (this.trState[i] === state || !el.classList) return;
+    this.trState[i] = state;
+    el.classList.toggle('is-sunk', state === 'sunk');
+    el.classList.toggle('is-gone', state === 'gone');
+    this.jsWrites++;
   }
 
   sinkStyle(el, k, i) {

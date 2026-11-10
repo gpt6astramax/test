@@ -183,13 +183,13 @@ stressBtn.addEventListener('click', () => {
 });
 // What is actually driving the blur right now, and how often JS writes it.
 const diagEl = document.getElementById('diag');
-const how = { timeline: 'CSS 动画驱动 filter', js: 'JS 每帧写 filter（有 will-change）', nolayer: 'JS 每帧写 filter（无 will-change）', backdrop: 'JS 每帧写 backdrop-filter' };
+const how = { timeline: 'CSS 滚动驱动 · 跟手（JS 不参与）', transition: 'CSS 过渡 · 按时间播放（JS 只在越过阈值时切一次 class）', js: 'JS 每帧写 filter（有 will-change）', nolayer: 'JS 每帧写 filter（无 will-change）', backdrop: 'JS 每帧写 backdrop-filter' };
 setInterval(() => {
   const w = comp.jsWrites;
   comp.jsWrites = 0;
   diagEl.innerHTML = '当前：<b>' + how[comp.mode] + '</b> · JS 写入 <b>' + w + '</b> 次/秒' +
     (loadMs ? ' · 主线程负载 <b>+' + loadMs + 'ms</b>/帧' : '') +
-    (comp.tl ? '' : ' · 此浏览器不支持滚动时间线，CSS 档会退回 JS');
+    (comp.tl ? '' : ' · 此浏览器不支持滚动时间线，"CSS 跟手"会退回 JS');
 }, 1000);
 // Refresh-rate check by eye: one dot moved by a CSS animation (compositor), one by JS every rAF
 // (main thread). JS reads the CSS animation's own clock, so both are always at the same position.
@@ -342,7 +342,7 @@ ${css}
 <body>
 <div class="modebar" id="modebar">
 <div class="mrow">
-<div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">CSS 时间线</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
+<div class="seg" role="group" aria-label="模糊的实现方式"><button type="button" data-mode="timeline">CSS 跟手</button><button type="button" data-mode="transition">CSS 按时间</button><button type="button" data-mode="js">JS·filter</button><button type="button" data-mode="nolayer">JS·filter 无图层</button><button type="button" data-mode="backdrop">JS·backdrop</button></div>
 <div class="seg" role="group" aria-label="主线程负载"><span class="seglab">主线程负载</span><button type="button" data-load="0">无</button><button type="button" data-load="20">+20ms</button><button type="button" data-load="50">+50ms</button><button type="button" data-load="120">+120ms</button></div>
 <button type="button" class="mb" id="block">阻塞 3 秒</button>
 <button type="button" class="mb" id="auto" aria-pressed="false">自动翻页</button>
