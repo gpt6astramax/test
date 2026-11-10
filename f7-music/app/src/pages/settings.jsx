@@ -25,6 +25,14 @@ function measure() {
     app: app ? `${app.offsetWidth} × ${app.offsetHeight}` : '?',
     html: document.documentElement.className || '(无)',
     standalone: String(window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches),
+    navStandalone: String(window.navigator.standalone),
+    displayMode: ['fullscreen', 'standalone', 'minimal-ui', 'browser'].find((d) => window.matchMedia(`(display-mode: ${d})`).matches) || '?',
+    scheme: window.matchMedia('(prefers-color-scheme: dark)').matches ? '深色' : '浅色',
+    statusBar: (document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]') || {}).content || '(没有)',
+    themeColor: Array.from(document.querySelectorAll('meta[name="theme-color"]')).map((x) => x.content).join(', ') || '(没有)',
+    visual: window.visualViewport ? `${Math.round(window.visualViewport.width)} × ${Math.round(window.visualViewport.height)}，偏移 ${Math.round(window.visualViewport.offsetTop)}` : '?',
+    ua: ((navigator.userAgent.match(/(iPhone|iPad|Macintosh|Android)[^)]*\)/) || [''])[0] + ' ' + (navigator.userAgent.match(/Version\/[\d.]+/) || [''])[0]).trim(),
+    url: window.location.pathname,
   };
 }
 
@@ -76,6 +84,14 @@ const SettingsPage = () => {
         <ListItem title="100vh" after={`${m.vh}px`} />
         <ListItem title="#app 的大小" after={m.app} />
         <ListItem title="screen" after={m.screen} />
+        <ListItem title="visualViewport" after={m.visual} />
+        <ListItem title="navigator.standalone" after={m.navStandalone} />
+        <ListItem title="display-mode" after={m.displayMode} />
+        <ListItem title="系统外观" after={m.scheme} />
+        <ListItem title="状态栏样式（meta）" after={m.statusBar} />
+        <ListItem title="theme-color（meta）" after={m.themeColor} />
+        <ListItem title="系统和浏览器" after={m.ua} />
+        <ListItem title="路径" after={m.url} />
       </List>
       <BlockFooter>如果顶部或底部显示不对，把这一块截图发给我。</BlockFooter>
     </Page>
