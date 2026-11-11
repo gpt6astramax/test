@@ -19,9 +19,13 @@
 //     (WebKit: CheckboxInputType::handleTouchEvent, updateIsSwitchVisuallyOnFromAbsoluteLocation.)
 import { buzz, payBuzz, reduced, clamp } from './platform';
 
-// After a touch lands on the switch, WebKit starts letting it be dragged this much later (its "held" delay), a little
-// margin added: items passed before then cannot tick.
-const SWITCH_HELD = 220;
+// After a touch lands on the switch, WebKit starts letting it be dragged 200 ms later (its "held" timer, started in
+// the touchstart's default handling). The glider starts a timer of its own in a touchstart listener, so just before
+// WebKit's: 205 ms makes it come due just after, and timers run in the order they come due, however late a busy page
+// makes them both. Only then does the glider move the switch across: moved across before WebKit follows, the switch
+// would be taken to be on that side from the start, and the drag's ticks would be lost. An item reached before then
+// is owed a tick, given as soon as the switch follows.
+const SWITCH_HELD = 205;
 
 export function attachGlider(bar, opt) {
   const items = Array.from(bar.querySelectorAll('[data-gl-item]'));
@@ -43,25 +47,40 @@ export function attachGlider(bar, opt) {
       opacity: '0', zIndex: '3', pointerEvents: 'auto', cursor: 'inherit', transform: '' });
     sw.setAttribute('aria-hidden', 'true');
   }
-  let swDown = 0, swOn = false, swTouch = false;                  // when the touch landed; the side the finger is kept on
-  // Keep the switch off to the left of the finger ('on': the finger on its right half) or to the right ('off'), well
-  // past any point where WebKit would flip it: its middle, or 40% of its width from where the finger started.
+  let swTouch = false, swOn = false, swFollows = false, swOwed = false, swTicks = 0, swTimer = 0;
+  // Keep the switch off to the left of the finger ('on': the finger on its right side) or to the right ('off'), far
+  // past any point where WebKit would flip it (its middle; at first, 40% of its width from where the finger started,
+  // which can be anywhere the finger has been since).
   function keepSwitch(clientX) {
     const w = bar.clientWidth;
     const left = bar.getBoundingClientRect().left;                 // the switch's place with no transform
-    const local = swOn ? 2 * w : -w;
+    const local = swOn ? 4 * w : -3 * w;
     sw.style.transform = `translateX(${(clientX - left - local).toFixed(1)}px)`;
     sw.getBoundingClientRect();                                     // in place before WebKit reads it, after this event
   }
+  // the touch landed on the switch (a listener on it: runs before WebKit's default handling starts its timer)
+  function switchDown(e) {
+    if (e.targetTouches.length !== 1) return;
+    swTouch = true; swOn = sw.checked; swFollows = false; swOwed = false; swTicks = 0;
+    clearTimeout(swTimer);
+    swTimer = setTimeout(() => {
+      if (!swTouch) return;
+      swFollows = true;
+      if (swOwed) { swOwed = false; swTicks++; }                   // an item reached before: tick at the next move
+    }, SWITCH_HELD);
+  }
+  // Each move can carry one tick: the switch sent across once, crossed by that move. Ticks due meanwhile wait for the
+  // moves after it (sent across twice before a move, the switch would end up where it was, and tick for neither).
   function switchMove(e, changed) {
     if (!sw || !swTouch) return;
-    // the item changed, and the switch already follows the finger: send the switch across, and the phone ticks
-    if (changed && performance.now() - swDown > SWITCH_HELD) swOn = !swOn;
+    if (changed) { if (swFollows) swTicks++; else swOwed = true; }
+    if (swTicks) { swTicks--; swOn = !swOn; }
     keepSwitch(e.clientX);
   }
   function switchUp() {
     if (!sw || !swTouch) return;
     swTouch = false;
+    clearTimeout(swTimer);
     // back over the bar once WebKit has had the finger's end (it clicks the switch then)
     setTimeout(() => { if (!swTouch) sw.style.transform = ''; }, 0);
   }
@@ -122,7 +141,6 @@ export function attachGlider(bar, opt) {
     document.addEventListener('pointercancel', end, true);
     // a touch stays with the bar it went down on; only the mouse needs capturing, to keep a drag that leaves the bar
     if (e.pointerType === 'mouse') { try { bar.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ } }
-    if (sw && e.pointerType === 'touch' && e.target === sw) { swTouch = true; swDown = performance.now(); swOn = sw.checked; }
     const a = at(e); to(a.pos); choose(a.i);
   }
   function move(e) {
@@ -156,6 +174,7 @@ export function attachGlider(bar, opt) {
     e.preventDefault();
     if (i === index) { if (opt.onReselect) opt.onReselect(i); } else { measure(); choose(i); to(index * seg); }
   }
+  if (sw) sw.addEventListener('touchstart', switchDown, { passive: true });
   bar.addEventListener('pointerdown', down);
   bar.addEventListener('pointermove', move);
   bar.addEventListener('pointerup', end);
@@ -175,6 +194,7 @@ export function attachGlider(bar, opt) {
       document.removeEventListener('visibilitychange', onVisible);
       cancelAnimationFrame(raf);
       if (ro) ro.disconnect();
+      if (sw) { sw.removeEventListener('touchstart', switchDown, { passive: true }); clearTimeout(swTimer); }
       bar.removeEventListener('pointerdown', down);
       bar.removeEventListener('pointermove', move);
       bar.removeEventListener('pointerup', end);

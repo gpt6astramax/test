@@ -30,9 +30,13 @@ const WEBKIT_SWITCH = () => {
     if (!(sw instanceof HTMLInputElement) || !sw.hasAttribute('switch') || e.targetTouches.length !== 1) return;
     const t = e.targetTouches[0];
     tr = { id: t.identifier, x0: t.clientX, sw, start: null, on: sw.checked, changed: false, t0: performance.now() };
+    window.__down = Math.round(performance.now() - (window.__t0 || 0));
     const mine = tr;
-    tr.timer = setTimeout(() => { if (tr === mine) { tr.start = local(sw, mine.x0); tr.on = sw.checked; } }, 200);
+    // WebKit starts its timer in the default handling, after every listener: here, a listener added after the page's
+    // (window, bubbling: the last to run)
+    mine.arm = () => { mine.timer = setTimeout(() => { if (tr === mine) { tr.start = local(sw, mine.x0); tr.on = sw.checked; } }, 200); };
   }, true);
+  window.addEventListener('touchstart', () => { if (tr && !tr.timer) tr.arm(); });
   window.addEventListener('touchmove', (e) => {                      // default handling: after every listener
     if (!tr || tr.start === null || e.defaultPrevented) return;
     const t = [...e.touches].find((x) => x.identifier === tr.id);
@@ -97,7 +101,7 @@ const WEBKIT_SWITCH = () => {
     await touch('touchStart', path[0], geo.y); await sleep(holdMs);
     for (let k = 1; k < path.length; k++) { await touch('touchMove', path[k], geo.y + (k % 2)); await sleep(stepMs); }
     await touch('touchEnd'); await sleep(400);
-    return page.evaluate(() => ({ ticks: __ticks, tabs: __tabs }));
+    return page.evaluate(() => ({ ticks: __ticks, tabs: __tabs, down: window.__down || 0 }));
   };
   const along = (from, to, steps) => [...Array(steps + 1)].map((_, k) => from + (to - from) * k / steps);
   const x0 = geo.xs[0], xN = geo.xs[geo.n - 1];
@@ -113,8 +117,16 @@ const WEBKIT_SWITCH = () => {
   // fast: from the first tab to the last in ~0.15 s, right away: the tabs passed before 200 ms cannot tick
   r = await drag(0, along(x0, xN, 10), 16);
   drags = r.ticks.filter((t) => t.why === 'drag');
-  const late = r.tabs.filter((tb) => tb.t > 220).length;
-  ok('dragged at once, fast: no tick before WebKit lets the switch follow (200 ms), none extra, none at the lift', r.ticks.length === late && drags.every((t) => t.t > 200), { ticks: r.ticks, tabs: r.tabs });
+  // tabs passed before the switch follows (205 ms after the touch landed: the glider's timer) owe one tick together
+  const since = (tb) => tb.t - r.down;
+  const late = r.tabs.filter((tb) => since(tb) > 205).length, early = r.tabs.some((tb) => since(tb) > 25 && since(tb) <= 205);
+  ok('dragged at once, fast: no tick before WebKit lets the switch follow (200 ms); then one owed for the tabs passed before, and one for each after', r.ticks.length === late + (early ? 1 : 0) && drags.every((t) => t.t - r.down > 200), { down: r.down, ticks: r.ticks, tabs: r.tabs });
+
+  // to the neighbour at once (in ~100 ms, before WebKit lets the switch follow), then the finger rests there, moving
+  // a little: the tick is owed, and comes as soon as the switch follows the finger
+  r = await drag(0, [...along(geo.xs[0], geo.xs[1], 2), ...Array(16).fill(0).map((_, k) => geo.xs[1] + (k % 3))], 16);
+  ok('to the neighbour at once, then resting there: one tick, as soon as WebKit lets the switch follow, none at the lift',
+    r.tabs.length === 2 && r.tabs[1].t - r.down < 200 && r.ticks.length === 1 && r.ticks[0].why === 'drag' && r.ticks[0].t - r.down > 200, { ticks: r.ticks, tabs: r.tabs });
 
   // slow, starting at once: ticks for every tab passed after 200 ms
   r = await drag(0, along(x0, xN, 60), 16);
@@ -124,6 +136,15 @@ const WEBKIT_SWITCH = () => {
   // held without moving: the lift ticks (a tap held long)
   r = await drag(500, [geo.xs[2]], 16);
   ok('held still, then lifted: one tick', r.ticks.length === 1, r.ticks);
+
+  // a busy page: every tab change keeps the main thread 260 ms (a heavy page drawn), so WebKit's 200 ms comes late
+  await page.evaluate(() => { window.__busy = new MutationObserver(() => { const t = performance.now(); while (performance.now() - t < 260); });
+    __busy.observe(document.querySelector('.dtb'), { attributes: true, subtree: true, attributeFilter: ['data-on'] }); });
+  r = await drag(0, [...along(geo.xs[1], geo.xs[2], 6), ...Array(12).fill(geo.xs[2]), ...along(geo.xs[2], geo.xs[4], 30)], 16);
+  const changes = r.tabs.length - 1;                              // the one chosen on landing does not count
+  ok(`a busy page (each tab drawn in 260 ms): the neighbour reached early still ticks, then each tab after it: ${changes} ticks while dragging`,
+    r.ticks.filter((t) => t.why === 'drag').length === changes && r.ticks.length === changes, { ticks: r.ticks, tabs: r.tabs });
+  await page.evaluate(() => __busy.disconnect());
 
   // the switch is back over the row, and the row still works by mouse/keyboard-free taps afterwards
   const back = await page.evaluate(() => document.querySelector('.dtb input[switch]').style.transform);
