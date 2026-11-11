@@ -1,6 +1,6 @@
 {
- "version": "8b50d428103b",
- "built": "2026-11-11T19:59:09.154Z",
+ "version": "9667b1fc4cdc",
+ "built": "2026-11-11T20:16:48.018Z",
  "medium": 0,
  "urgent": 0,
  "note": "",
@@ -8,7 +8,7 @@
   {
    "path": "index.html",
    "size": 4462,
-   "sha256": "f0b0b927ead0e16a1b59695dfc814c84aca438eff3ea374060cfc710d8e014c5"
+   "sha256": "3d95b1e1dad008e2db77118cf9870c7b9122131be13e860a9dab3df6a2388d2d"
   },
   {
    "path": "assets/index-5L-OU2FN.css",
@@ -16,9 +16,9 @@
    "sha256": "b53d765e2121ea748de63a126c9832ca0fb569629b034fad6e05cb2a0f42d75f"
   },
   {
-   "path": "assets/index-BuxItZWO.js",
-   "size": 82743,
-   "sha256": "3946f18fc1e0c67d67c7ee9cbc7dc949452c8c3954d1f0357abdd8d8ad9b6bfe"
+   "path": "assets/index-BK3T52dz.js",
+   "size": 83494,
+   "sha256": "611e864a38f983780b407a01d666726df96e223645a91bee5e5dcd041a62567e"
   },
   {
    "path": "assets/jost-latin-300-normal-DkBQXsFU.woff2",

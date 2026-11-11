@@ -9,8 +9,9 @@
 //     onReselect={(i) => popToRoot(i)}     // a tap on the tab that is already current
 //   />
 //
-// - The whole row is one <label> around a hidden switch: on iPhone a tap anywhere on it plays the system tick (the
-//   only haptic a web page gets there). Android ticks through the vibration API on every tab passed.
+// - On iPhone an invisible native switch lies over the whole row (the only haptic a web page gets there is the one a
+//   finger on such a switch plays): a tap ticks, and a finger dragged along the row ticks at every tab it passes
+//   (./glider.js). Android ticks through the vibration API on every tab passed.
 // - The dot is the glider (./glider.js): it springs to a tapped tab and trails a finger dragged along the row. Held, it
 //   is pulled into a flat ellipse; moving, it stretches along its path the faster it goes.
 // - Self-contained: it brings its own CSS. Colours come from CSS variables with fallbacks, so it follows a theme:
@@ -37,7 +38,7 @@ const CSS = `
 .dtb-ink{position:absolute;left:0;bottom:-3px;height:6px;pointer-events:none;will-change:transform;opacity:var(--dtb-o,1)}
 .dtb-ink::after{content:"";position:absolute;left:50%;top:0;width:6px;height:6px;margin-left:-3px;border-radius:50%;
   background:var(--dtb-fg,var(--fg,#111214));transform:scale(var(--sx,1),var(--sy,1))}
-.dtb-switch{position:absolute;left:0;top:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
+.dtb-switch{position:absolute;left:0;top:0;width:100%;height:100%;margin:0;opacity:0;-webkit-user-select:none;user-select:none}
 /* the haze: only blur, the row's own box with round ends. It keeps a layer of its own (translateZ), so that layers
    coming and going behind it do not have it rebuilt, which on iOS shows as the blur dropping out for a frame. */
 .dtb-haze{position:absolute;z-index:-1;inset:0;border-radius:999px;pointer-events:none;transform:translateZ(0);

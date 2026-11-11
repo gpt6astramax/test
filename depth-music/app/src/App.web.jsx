@@ -48,7 +48,9 @@ export default function App() {
   const chrome = React.useRef(null);
   React.useEffect(() => {
     const el = chrome.current;
-    const stop = (e) => { if (e.cancelable && !(e.target.closest && e.target.closest('.sg'))) e.preventDefault(); };
+    // A finger on the tab row's switch is left alone: the switch follows it (the haptic ticks of a drag), and taken by
+    // the switch, the touch scrolls nothing anyway.
+    const stop = (e) => { if (e.cancelable && !(e.target.closest && e.target.closest('.sg, input[switch]'))) e.preventDefault(); };
     el.addEventListener('touchmove', stop, { passive: false });
     return () => el.removeEventListener('touchmove', stop, { passive: false });
   }, []);
