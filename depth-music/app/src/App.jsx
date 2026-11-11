@@ -14,6 +14,7 @@ import { font, useAppFonts } from './ui/fonts';
 import Discover from './screens/Discover';
 import Search from './screens/Search';
 import Library from './screens/Library';
+import Radio from './screens/Radio';
 import Me from './screens/Me';
 import Artist from './screens/Artist';
 import Collection from './screens/Collection';
@@ -24,6 +25,7 @@ const SCREENS = { artist: Artist, collection: Collection };
 const TABS = [
   { key: 'discover', label: '发现', icon: 'compass', root: Discover },
   { key: 'search', label: '搜索', icon: 'search', root: Search },
+  { key: 'radio', label: '电台', icon: 'radio', root: Radio },
   { key: 'library', label: '曲库', icon: 'stack', root: Library },
   { key: 'me', label: '我的', icon: 'user', root: Me },
 ];

@@ -145,8 +145,9 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
     console.log(`[${DRIVER}] the tab row's glass: pages and tabs`);
     const s = await session('none');
     await s.stripesIn('.under');
+    const N = await s.page.locator('.dtb-item').count();
     const tabs = await s.page.locator('.dtb').boundingBox();
-    const tx = (i) => tabs.x + tabs.width * (i + 0.5) / 4, ty = tabs.y + tabs.height / 2;
+    const tx = (i) => tabs.x + tabs.width * (i + 0.5) / N, ty = tabs.y + tabs.height / 2;
     await s.bottom(); await sleep(300);
     await s.sample('at rest');
     const tile = s.page.locator('.tabview.on [role="button"]', { hasText: '产品演示' }).first();
@@ -174,8 +175,9 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
     const e = 'blur';
     const s = await session('none');
     await s.stripesIn('.under');
+    const N = await s.page.locator('.dtb-item').count();
     const tabs = await s.page.locator('.dtb').boundingBox();
-    await s.page.touchscreen.tap(tabs.x + tabs.width * 2.5 / 4, tabs.y + tabs.height / 2); await sleep(700);
+    await s.page.touchscreen.tap(tabs.x + tabs.width * 3.5 / N, tabs.y + tabs.height / 2); await sleep(700);
     await s.bottom(); await sleep(300);
     await s.sample('before');
     const row = s.page.locator('.tabview.on [aria-label^="播放 "]').last();

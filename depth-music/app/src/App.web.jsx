@@ -10,6 +10,7 @@ import { Icon } from './ui/Icon';
 import Discover from './screens/Discover';
 import Search from './screens/Search';
 import Library from './screens/Library';
+import Radio from './screens/Radio';
 import Me from './screens/Me';
 import Artist from './screens/Artist';
 import Collection from './screens/Collection';
@@ -21,6 +22,7 @@ const SCREENS = { artist: Artist, collection: Collection };
 const TABS = [
   { key: 'discover', label: '发现', icon: <Icon name="compass" size={25} />, root: Discover },
   { key: 'search', label: '搜索', icon: <Icon name="search" size={25} />, root: Search },
+  { key: 'radio', label: '电台', icon: <Icon name="radio" size={25} />, root: Radio },
   { key: 'library', label: '曲库', icon: <Icon name="stack" size={25} />, root: Library },
   { key: 'me', label: '我的', icon: <Icon name="user" size={25} />, root: Me },
 ];
@@ -49,7 +51,7 @@ export default function App() {
   // The tab row is covered as far as the root page of the tab showing is (by pages pushed over it), or as far up as the
   // player is, whichever is more.
   const cover = React.useRef(null);
-  const covered = React.useRef([0, 0, 0, 0]);    // per tab: how far behind its root page is
+  const covered = React.useRef(TABS.map(() => 0));    // per tab: how far behind its root page is
   const tabNow = React.useRef(tab);
   tabNow.current = tab;
   React.useLayoutEffect(() => {

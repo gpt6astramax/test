@@ -62,7 +62,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const chrome = document.querySelector('.chrome'), h = chrome.querySelector('.dtb-haze'), i = chrome.querySelector('.dtb-item');
       const m = /blur\(([\d.]+)px\)/.exec(getComputedStyle(h).backdropFilter);
       const r = chrome.querySelector('.dtb').getBoundingClientRect();
-      const hit = document.elementFromPoint(r.left + r.width * 1.5 / 4, r.top + r.height / 2);
+      const hit = document.elementFromPoint(r.left + r.width * 1.5 / document.querySelectorAll('.dtb-item').length, r.top + r.height / 2);
       return { capsule: m ? +m[1] : null, icon: getComputedStyle(i).filter, o: +getComputedStyle(i).opacity, inert: chrome.inert, hit: hit && hit.closest('.chrome') ? 'row' : hit && hit.closest('.sheet') ? 'player' : hit && hit.closest('.layer') ? 'page' : 'other' };
     });
     const whole = (r) => r.capsule === 18 && r.icon === 'none' && r.o === 1 && !r.inert && r.hit === 'row';
@@ -73,10 +73,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     // ---- 1. root page
     let r = await row();
     ok('root page: the row is whole and takes taps', whole(r), r);
+    const N = await page.locator('.dtb-item').count();
     const tabs = await page.locator('.dtb').boundingBox();
-    await page.touchscreen.tap(tabs.x + tabs.width * 1.5 / 4, tabs.y + tabs.height / 2); await sleep(700);
+    await page.touchscreen.tap(tabs.x + tabs.width * 1.5 / N, tabs.y + tabs.height / 2); await sleep(700);
     const tabOn = await page.evaluate(() => document.querySelector('.dtb-item[data-on]').getAttribute('aria-label'));
-    await page.touchscreen.tap(tabs.x + tabs.width * 0.5 / 4, tabs.y + tabs.height / 2); await sleep(700);
+    await page.touchscreen.tap(tabs.x + tabs.width * 0.5 / N, tabs.y + tabs.height / 2); await sleep(700);
     r = await row();
     ok('root pages: a tap on the row switches tabs, and it stays whole', tabOn === '搜索' && whole(r), { tabOn, ...r });
 

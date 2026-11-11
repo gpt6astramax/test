@@ -62,8 +62,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       console.log(`[${driver}] ${label} (${r.scroller}): ${r.bad.length ? r.bad.length + ' change(s) under the finger' : 'nothing changed under the finger'}${r.ran ? ', the entrance ran out' : ''}`);
       r.bad.slice(0, 6).forEach((l) => console.log('     ' + l));
     };
+    const N = await page.locator('.dtb-item').count();
     const tabs = await page.locator('.dtb').boundingBox();
-    const tx = (i) => tabs.x + tabs.width * (i + 0.5) / 4, ty = tabs.y + tabs.height / 2;
+    const tx = (i) => tabs.x + tabs.width * (i + 0.5) / N, ty = tabs.y + tabs.height / 2;
 
     // 1. tab switch, then scroll the new tab straight away
     await page.evaluate(() => watch.start());
