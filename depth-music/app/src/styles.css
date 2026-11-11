@@ -17,6 +17,9 @@
   --acc-l: .52; --acc-c: .17;               /* accent = oklch(l c <hue of the track>) */
   --like: #f0467f;                          /* a liked track's heart */
   --sun: none; --moon: block;               /* which icon the theme button shows */
+  /* line icons stand off the paper a little: a faint shadow below them here; in the dark theme a faint glow in their
+     own colour instead (so a dimmer icon glows less), as light objects there do */
+  --icon-lift: drop-shadow(0 1px 1px rgb(0 0 0 / .14));
   /* Jost, the face of the lit-paper style: light (300) for display, regular for text; Chinese falls to the system face */
   --display: "Jost", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --text: "Jost", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -35,13 +38,15 @@
   --hair: rgb(242 242 243 / .14); --fill: rgb(242 242 243 / .08); --ink: rgb(242 242 243 / .14);
   --glass: rgb(30 30 32 / .55); --glass-edge: rgb(255 255 255 / .12); --lift: 0 14px 40px rgb(0 0 0 / .6);
   --wave-rest: rgb(242 242 243 / .26); --on-acc: #0a0a0b;
-  --acc-l: .82; --acc-c: .13; --like: #ff6b9a; --sun: block; --moon: none; color-scheme: dark } }
+  --acc-l: .82; --acc-c: .13; --like: #ff6b9a; --sun: block; --moon: none; 
+  --icon-lift: drop-shadow(0 0 3px color-mix(in srgb, currentColor 45%, transparent)); color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #000000; --fg: #f2f2f3; --fg2: rgb(242 242 243 / .64); --fg3: rgb(242 242 243 / .38);
   --hair: rgb(242 242 243 / .14); --fill: rgb(242 242 243 / .08); --ink: rgb(242 242 243 / .14);
   --glass: rgb(30 30 32 / .55); --glass-edge: rgb(255 255 255 / .12); --lift: 0 14px 40px rgb(0 0 0 / .6);
   --wave-rest: rgb(242 242 243 / .26); --on-acc: #0a0a0b;
-  --acc-l: .82; --acc-c: .13; --like: #ff6b9a; --sun: block; --moon: none; color-scheme: dark }
+  --acc-l: .82; --acc-c: .13; --like: #ff6b9a; --sun: block; --moon: none; 
+  --icon-lift: drop-shadow(0 0 3px color-mix(in srgb, currentColor 45%, transparent)); color-scheme: dark }
 
 @property --prog { syntax: '<number>'; inherits: false; initial-value: 0 }
 
@@ -129,6 +134,7 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 html.back-glass .nav .tap { background: none; border: 0; box-shadow: none;
   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px) }
 html.back-plain .nav .tap { background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none }
+.ic { filter: var(--icon-lift) }
 .glass { background: var(--glass); border: 1px solid var(--glass-edge); box-shadow: var(--lift);
   -webkit-backdrop-filter: blur(26px) saturate(1.7); backdrop-filter: blur(26px) saturate(1.7) }
 
