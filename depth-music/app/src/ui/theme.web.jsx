@@ -11,7 +11,7 @@ import { Icon } from './Icon';
 // the fallback of a variable that is never set.
 const COLORS = {
   bg: 'var(--bg)', fg: 'var(--fg)', fg2: 'var(--fg2)', fg3: 'var(--fg3)', hair: 'var(--hair)', fill: 'var(--fill)', ink: 'var(--ink)',
-  glass: 'var(--glass)', glassEdge: 'var(--glass-edge)', sheet: 'var(--sheet)', waveRest: 'var(--wave-rest)', onAcc: 'var(--on-acc)',
+  glass: 'var(--glass)', glassEdge: 'var(--glass-edge)', waveRest: 'var(--wave-rest)', onAcc: 'var(--on-acc)',
   like: 'var(--like)', lift: 'var(--lift)',
   /** a track's accent, from its hue */
   acc: (hue) => `var(--_, oklch(var(--acc-l) var(--acc-c) ${hue}))`,

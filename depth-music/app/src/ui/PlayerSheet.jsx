@@ -1,7 +1,8 @@
 // The player on iOS / Android. Unlike every other page it comes up from below, over whatever is on screen, tab row
 // included, and goes away with a swipe down. Once up it is a page like any other: it fills the screen to the top,
-// square-cornered, with a floating round button to put it away. What lies under it drops back out of focus, and
-// comes back with the finger as it is pulled down. (PlayerSheet.web.jsx is the web twin, a vertical ScrollGesture.)
+// square-cornered, with a floating round button to put it away, and like any other page it has no ground of its
+// own. What was on screen before stays behind it, smaller, lower, out of focus and faint, exactly as a page does
+// behind the next one, and comes back with the finger as the player is pulled down. (PlayerSheet.web.jsx is the web twin, a vertical ScrollGesture.)
 //
 //   const motion = React.useRef(sheetMotion()).current;
 //   <Receding motion={motion} inert={open}> …the app… </Receding>
@@ -16,8 +17,8 @@ import { Glass } from './Glass';
 import { EASE, Haze, hazeTint, pair, place, drive, lerp } from './motion';
 
 const MS = 620, CLOSE_MS = 420;
-const BACK = { s: 0.92, y: 0.012, o: 0.45 };
-const BLUR = 34;
+const BACK = { s: 0.86, y: 0.045, o: 0.5 };      // as a page behind the next one (nav/DepthStackView)
+const BLUR = 46;
 const GUTTER = 20, COLUMN = 460;
 
 /** 1: the sheet is away. 0: it is up. */
@@ -98,7 +99,7 @@ function Surface({ open, motion, onGone, children }) {
       accessibilityViewIsModal
       testID="player-sheet"
       style={{
-        position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: c.sheet,
+        position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
         transform: [{ translateY: motion.n.interpolate({ inputRange: [0, 1], outputRange: [0, range] }) }],
       }}
       {...pan.panHandlers}

@@ -13,7 +13,6 @@
   --bg: #f2f2f0; --fg: #111214; --fg2: rgb(17 18 20 / .62); --fg3: rgb(17 18 20 / .36);
   --hair: rgb(17 18 20 / .1); --fill: rgb(17 18 20 / .05); --ink: rgb(17 18 20 / .09);
   --glass: rgb(255 255 255 / .6); --glass-edge: rgb(255 255 255 / .9); --lift: 0 8px 28px rgb(0 0 0 / .12);
-  --sheet: rgb(248 248 246 / .86);
   --wave-rest: rgb(17 18 20 / .2); --on-acc: #ffffff;
   --acc-l: .52; --acc-c: .17;               /* accent = oklch(l c <hue of the track>) */
   --like: #f0467f;                          /* a liked track's heart */
@@ -30,14 +29,12 @@
   --bg: #000000; --fg: #f2f2f3; --fg2: rgb(242 242 243 / .64); --fg3: rgb(242 242 243 / .38);
   --hair: rgb(242 242 243 / .14); --fill: rgb(242 242 243 / .08); --ink: rgb(242 242 243 / .14);
   --glass: rgb(30 30 32 / .55); --glass-edge: rgb(255 255 255 / .12); --lift: 0 14px 40px rgb(0 0 0 / .6);
-  --sheet: rgb(22 22 24 / .86);
   --wave-rest: rgb(242 242 243 / .26); --on-acc: #0a0a0b;
   --acc-l: .82; --acc-c: .13; --like: #ff6b9a; --sun: block; --moon: none; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #000000; --fg: #f2f2f3; --fg2: rgb(242 242 243 / .64); --fg3: rgb(242 242 243 / .38);
   --hair: rgb(242 242 243 / .14); --fill: rgb(242 242 243 / .08); --ink: rgb(242 242 243 / .14);
   --glass: rgb(30 30 32 / .55); --glass-edge: rgb(255 255 255 / .12); --lift: 0 14px 40px rgb(0 0 0 / .6);
-  --sheet: rgb(22 22 24 / .86);
   --wave-rest: rgb(242 242 243 / .26); --on-acc: #0a0a0b;
   --acc-l: .82; --acc-c: .13; --like: #ff6b9a; --sun: block; --moon: none; color-scheme: dark }
 
@@ -150,13 +147,14 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 /* ---- the player: comes up from below over everything and fills the screen like a page; goes away with a swipe down ---- */
 .sheet { position: absolute; inset: 0; z-index: 20 }
 .sheet > .sg-body { display: flex; flex-direction: column }
-.sheet-panel { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--bg) }
+/* no ground of its own, like every page: only content, over what was there before */
+.sheet-panel { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column }
 /* the sheet's content scrolls on its own; at its top a pull down is handed on to the sheet, which is how it is dismissed */
 .sheet-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none }
 .sheet-scroll::-webkit-scrollbar { display: none }
 .sheet-in { display: flex; flex-direction: column; gap: 26px; padding: calc(var(--sat, 0px) + 66px) var(--gutter-r) calc(var(--sab, 0px) + 40px) var(--gutter-l) }
 /* what lies under the sheet drops back out of focus, on the sheet's own scroll timeline */
-.under.sh-back { transform: var(--sh-t); opacity: var(--sh-o) }
+.under.sh-back { transform: var(--sh-t); filter: blur(var(--sh-blur)); opacity: var(--sh-o) }
 
 #toast { position: absolute; z-index: 30; left: 50%; bottom: calc(var(--sab, 0px) + var(--chrome) + 14px); transform: translate(-50%, 10px); padding: 9px 16px; border-radius: 999px;
   font-size: 13.5px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .25s, transform .35s var(--spring) }

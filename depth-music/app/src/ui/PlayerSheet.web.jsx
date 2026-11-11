@@ -1,6 +1,7 @@
 // The player. Unlike every other page it comes up from below, over whatever is on screen, and goes away with a swipe
 // down. Once up it is a page like any other: it fills the screen to the top, square-cornered, with a floating round
-// button to put it away. It is a vertical ScrollGesture (sides [1]): with the 'scroll' driver dragging it is native
+// button to put it away, and like any other page it has no ground of its own. It is only its content; what was on
+// screen before stays behind it, smaller, lower, out of focus and faint, exactly as a page does behind the next one. It is a vertical ScrollGesture (sides [1]): with the 'scroll' driver dragging it is native
 // scrolling, so it follows the finger and snaps like a system sheet. It comes in with enter(), an animation and not
 // a gesture. What lies under it drops back out of focus, tied to the sheet's own scroll timeline.
 //
@@ -11,17 +12,15 @@ import * as React from 'react';
 import '../lib/scroll-gesture.js';
 import { whenQuiet } from '../lib/quiet';
 import { getDriver } from '../lib/driver';
+import { BACK } from '../lib/depth-stack';
 import { reduced, supportsTimeline, tapSwitch } from './platform';
 import { Icon } from './Icon';
 
 const ScrollGesture = window.ScrollGesture;
 const OVER = 0.1;                  // the commit point lies this far below the screen's edge
 const MS = 620, EASE = 'cubic-bezier(.2,.86,.24,1)';
-// What lies under only shrinks, sinks and dims: no blur. The player covers the whole screen, so the blur would only
-// ever show for the moment it is pulled down, and transform and opacity alone can be run by the compositor.
-const BACK = { s: 0.92, y: 1.2, o: 0.45 };
-const FRONT_FRAME = { transform: 'none', opacity: 1 };
-const BACK_FRAME = { transform: `translateY(${BACK.y}%) scale(${BACK.s})`, opacity: BACK.o };
+const FRONT_FRAME = { transform: 'none', filter: 'blur(0px)', opacity: 1 };
+const BACK_FRAME = { transform: `translateY(${BACK.y}%) scale(${BACK.s})`, filter: `blur(${BACK.blur}px)`, opacity: BACK.o };
 
 let styled = false;
 function styles() {
@@ -31,8 +30,8 @@ function styles() {
   const st = document.createElement('style');
   st.setAttribute('data-player-sheet', '');
   st.textContent =
-    `.app{--sh-t:translateY(${BACK.y}%) scale(${BACK.s});--sh-o:${BACK.o}}` +
-    `@keyframes sh-f{0%,${hold}{transform:none;opacity:1}100%{transform:var(--sh-t);opacity:var(--sh-o)}}`;
+    `.app{--sh-t:translateY(${BACK.y}%) scale(${BACK.s});--sh-blur:${BACK.blur}px;--sh-o:${BACK.o}}` +
+    `@keyframes sh-f{0%,${hold}{transform:none;filter:blur(0px);opacity:1}100%{transform:var(--sh-t);filter:blur(var(--sh-blur));opacity:var(--sh-o)}}`;
   document.head.appendChild(st);
 }
 
@@ -95,6 +94,7 @@ function Surface({ open, onGone, under, children }) {
       if (tied || clock) return;
       const k = Math.min(1, (1 + OVER) * Math.max(0, p)), L = (a, b) => a + (b - a) * k;
       u.style.transform = `translateY(${L(BACK.y, 0)}%) scale(${L(BACK.s, 1)})`;
+      u.style.filter = `blur(${L(BACK.blur, 0)}px)`;
       u.style.opacity = String(L(BACK.o, 1));
     });
     const offSettle = gesture.on('settle', (side) => { if (side === 1) gone(); });
@@ -112,7 +112,7 @@ function Surface({ open, onGone, under, children }) {
       gesture.destroy();
       g.current = null;
       if (u) {
-        ['animation', 'animation-timeline', 'transform', 'opacity'].forEach((k) => u.style.removeProperty(k));
+        ['animation', 'animation-timeline', 'transform', 'filter', 'opacity'].forEach((k) => u.style.removeProperty(k));
         u.classList.remove('sh-back');
         u.inert = false;
       }

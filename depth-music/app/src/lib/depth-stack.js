@@ -37,7 +37,9 @@ export const OVER = 0.1;
 export const GONE = 0.8;
 export const PUSH_MS = 660;
 export const PUSH_EASE = 'cubic-bezier(.2,.86,.24,1)';
-const FRONT = { s: 1, y: 0, blur: 0, o: 1 }, BACK = { s: 0.86, y: 4.5, blur: 20, o: 0.5 }, FAR = { s: 0.74, y: 10, blur: 40, o: 0 };
+const FRONT = { s: 1, y: 0, blur: 0, o: 1 }, FAR = { s: 0.74, y: 10, blur: 40, o: 0 };
+// What a page looks like right behind the one in front: smaller, lower, out of focus, faint. The player uses the same.
+export const BACK = { s: 0.86, y: 4.5, blur: 20, o: 0.5 };
 const tf = (v) => `translateY(${v.y}%) scale(${v.s})`;
 const frame = (v) => ({ transform: v.s === 1 && !v.y ? 'none' : tf(v), filter: `blur(${v.blur}px)`, opacity: v.o });
 const BACK_SVG = '<svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';

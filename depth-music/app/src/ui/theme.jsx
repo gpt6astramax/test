@@ -18,7 +18,6 @@ function palette(dark) {
     hair: rgba(...ink, dark ? 0.14 : 0.1), fill: rgba(...ink, dark ? 0.08 : 0.05), ink: rgba(...ink, dark ? 0.14 : 0.09),
     glass: dark ? rgba(30, 30, 32, 0.55) : rgba(255, 255, 255, 0.6),
     glassEdge: dark ? rgba(255, 255, 255, 0.12) : rgba(255, 255, 255, 0.9),
-    sheet: dark ? '#161618' : '#f8f8f6',
     waveRest: rgba(...ink, dark ? 0.26 : 0.2),
     onAcc: dark ? '#0a0a0b' : '#ffffff',
     like: dark ? '#ff6b9a' : '#f0467f',
