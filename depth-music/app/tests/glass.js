@@ -94,7 +94,7 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
     const shoot = async () => readPNG(Buffer.from((await cdp.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
     const bottom = () => page.evaluate(() => { const p = document.elementFromPoint(196, 400); const sc = p && p.closest('.page'); if (sc) sc.scrollTop = sc.scrollHeight; });
     const box = () => page.evaluate(() => {
-      const h = document.querySelector('.dtb-haze'), c = document.querySelector('.chrome');
+      const h = document.querySelector('.sgm-haze'), c = document.querySelector('.chrome');
       if (!h || getComputedStyle(h).display === 'none') return { off: true };
       const r = h.getBoundingClientRect();
       // how much of its own blur the capsule has at this moment (a page in front turns it down: lib/chrome-cover.js)
@@ -145,8 +145,8 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
     console.log(`[${DRIVER}] the tab row's glass: pages and tabs`);
     const s = await session('none');
     await s.stripesIn('.under');
-    const N = await s.page.locator('.dtb-item').count();
-    const tabs = await s.page.locator('.dtb').boundingBox();
+    const N = await s.page.locator('.sgm-tabs .sgm-item').count();
+    const tabs = await s.page.locator('.sgm-tabs').boundingBox();
     const tx = (i) => tabs.x + tabs.width * (i + 0.5) / N, ty = tabs.y + tabs.height / 2;
     await s.bottom(); await sleep(300);
     await s.sample('at rest');
@@ -175,8 +175,8 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
     const e = 'blur';
     const s = await session('none');
     await s.stripesIn('.under');
-    const N = await s.page.locator('.dtb-item').count();
-    const tabs = await s.page.locator('.dtb').boundingBox();
+    const N = await s.page.locator('.sgm-tabs .sgm-item').count();
+    const tabs = await s.page.locator('.sgm-tabs').boundingBox();
     await s.page.touchscreen.tap(tabs.x + tabs.width * 3.5 / N, tabs.y + tabs.height / 2); await sleep(700);
     await s.bottom(); await sleep(300);
     await s.sample('before');

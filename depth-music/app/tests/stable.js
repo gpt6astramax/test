@@ -62,8 +62,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       console.log(`[${driver}] ${label} (${r.scroller}): ${r.bad.length ? r.bad.length + ' change(s) under the finger' : 'nothing changed under the finger'}${r.ran ? ', the entrance ran out' : ''}`);
       r.bad.slice(0, 6).forEach((l) => console.log('     ' + l));
     };
-    const N = await page.locator('.dtb-item').count();
-    const tabs = await page.locator('.dtb').boundingBox();
+    const N = await page.locator('.sgm-tabs .sgm-item').count();
+    const tabs = await page.locator('.sgm-tabs').boundingBox();
     const tx = (i) => tabs.x + tabs.width * (i + 0.5) / N, ty = tabs.y + tabs.height / 2;
 
     // 1. tab switch, then scroll the new tab straight away
@@ -104,7 +104,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(600);
     await page.evaluate(() => {
       window.glass = { bad: new Set(), on: true };
-      const haze = document.querySelector('.dtb-haze');
+      const haze = document.querySelector('.sgm-haze');
       const tick = () => { if (!glass.on) return; for (let e = haze.parentElement; e; e = e.parentElement) { const f = getComputedStyle(e).filter; if (f && f !== 'none') glass.bad.add((e.className || e.tagName) + ' ' + f.replace(/[\d.]+px/, 'Npx')); } requestAnimationFrame(tick); };
       requestAnimationFrame(tick);
     });

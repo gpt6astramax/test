@@ -35,7 +35,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     // ---- 6. watched every frame from here on
     await page.evaluate(() => {
-      const chrome = document.querySelector('.chrome'), haze = chrome.querySelector('.dtb-haze'), bar = chrome.querySelector('.dtb');
+      const chrome = document.querySelector('.chrome'), haze = chrome.querySelector('.sgm-haze'), bar = chrome.querySelector('.sgm-tabs');
       const name = (e) => (e.id ? '#' + e.id : e.tagName.toLowerCase() + (typeof e.className === 'string' && e.className ? '.' + e.className.split(' ')[0] : ''));
       const r0 = bar.getBoundingClientRect();
       window.watch = { bad: new Set(), on: true, frames: 0 };
@@ -50,7 +50,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           if (+cs.opacity < 0.999) watch.bad.add(name(e) + ' (around the capsule): opacity below 1');
           if (e.getAnimations().length) watch.bad.add(name(e) + ' (around the capsule): animation');
         }
-        for (const e of [haze, ...chrome.querySelectorAll('.dtb-haze, .dtb-ink, .shell')]) if (e.getAnimations().length) watch.bad.add(name(e) + ': animation');
+        for (const e of [haze, ...chrome.querySelectorAll('.sgm-haze, .sgm-tabs .sgm-ink, .shell')]) if (e.getAnimations().length) watch.bad.add(name(e) + ': animation');
         const r = bar.getBoundingClientRect();
         if (Math.abs(r.top - r0.top) > 0.5 || Math.abs(r.left - r0.left) > 0.5 || Math.abs(r.width - r0.width) > 0.5) watch.bad.add('the row moved');
         requestAnimationFrame(tick);
@@ -59,10 +59,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     // the row as it is: capsule blur, the first icon's filter and opacity, inert, and what a tap at the second tab hits
     const row = () => page.evaluate(() => {
-      const chrome = document.querySelector('.chrome'), h = chrome.querySelector('.dtb-haze'), i = chrome.querySelector('.dtb-item');
+      const chrome = document.querySelector('.chrome'), h = chrome.querySelector('.sgm-haze'), i = chrome.querySelector('.sgm-tabs .sgm-item');
       const m = /blur\(([\d.]+)px\)/.exec(getComputedStyle(h).backdropFilter);
-      const r = chrome.querySelector('.dtb').getBoundingClientRect();
-      const hit = document.elementFromPoint(r.left + r.width * 1.5 / document.querySelectorAll('.dtb-item').length, r.top + r.height / 2);
+      const r = chrome.querySelector('.sgm-tabs').getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width * 1.5 / document.querySelectorAll('.sgm-tabs .sgm-item').length, r.top + r.height / 2);
       return { capsule: m ? +m[1] : null, icon: getComputedStyle(i).filter, o: +getComputedStyle(i).opacity, inert: chrome.inert, hit: hit && hit.closest('.chrome') ? 'row' : hit && hit.closest('.sheet') ? 'player' : hit && hit.closest('.layer') ? 'page' : 'other' };
     });
     const whole = (r) => r.capsule === 18 && r.icon === 'none' && r.o === 1 && !r.inert && r.hit === 'row';
@@ -73,10 +73,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     // ---- 1. root page
     let r = await row();
     ok('root page: the row is whole and takes taps', whole(r), r);
-    const N = await page.locator('.dtb-item').count();
-    const tabs = await page.locator('.dtb').boundingBox();
+    const N = await page.locator('.sgm-tabs .sgm-item').count();
+    const tabs = await page.locator('.sgm-tabs').boundingBox();
     await page.touchscreen.tap(tabs.x + tabs.width * 1.5 / N, tabs.y + tabs.height / 2); await sleep(700);
-    const tabOn = await page.evaluate(() => document.querySelector('.dtb-item[data-on]').getAttribute('aria-label'));
+    const tabOn = await page.evaluate(() => document.querySelector('.sgm-tabs .sgm-item[data-on]').getAttribute('aria-label'));
     await page.touchscreen.tap(tabs.x + tabs.width * 0.5 / N, tabs.y + tabs.height / 2); await sleep(700);
     r = await row();
     ok('root pages: a tap on the row switches tabs, and it stays whole', tabOn === '搜索' && whole(r), { tabOn, ...r });

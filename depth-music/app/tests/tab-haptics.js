@@ -1,7 +1,8 @@
 // iPhone haptics on the tab row, checked against a model of WebKit's switch (Chromium has no switch haptics):
 //   - a tap ticks once, also the tap that switches tabs (it used to stay silent: WebKit takes a tap that shows new
 //     content as a hover, and the label's click never came)
-//   - a drag ticks once for every tab it passes, from WebKit's 200 ms "held" delay on, and never otherwise
+//   - a drag ticks once for every tab it passes, from WebKit's 200 ms "held" delay on; the tabs chosen before then
+//     (the one landed on included) owe one tick together, given as soon as the switch follows the finger
 // The model follows WebKit's CheckboxInputType (Source/WebCore/html/CheckboxInputType.cpp): a touch on the switch
 // starts tracking 200 ms after it lands; each move after that flips the switch (and ticks) when the finger crosses the
 // switch's middle in its own coordinates (the first time: 40% of its width past where it started, when the finger
@@ -75,15 +76,15 @@ const WEBKIT_SWITCH = () => {
   const cdp = await ctx.newCDPSession(page);
   const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
   const geo = await page.evaluate(() => {
-    const bar = document.querySelector('.dtb'), r = bar.getBoundingClientRect(), n = bar.querySelectorAll('.dtb-item').length;
+    const bar = document.querySelector('.sgm-tabs'), r = bar.getBoundingClientRect(), n = bar.querySelectorAll('.sgm-tabs .sgm-item').length;
     return { y: r.top + r.height / 2, xs: [...Array(n)].map((_, i) => r.left + r.width * (i + 0.5) / n), sw: !!bar.querySelector('input[switch]'), n };
   });
   ok('the row has its switch (an iPhone without the vibration API)', geo.sw);
   // tab changes as the row shows them, timed from the touch
   await page.evaluate(() => {
     window.__tabs = [];
-    new MutationObserver(() => { const on = [...document.querySelectorAll('.dtb-item')].findIndex((e) => e.hasAttribute('data-on')); const l = __tabs[__tabs.length - 1]; if (!l || l.i !== on) __tabs.push({ i: on, t: Math.round(performance.now() - (window.__t0 || 0)) }); })
-      .observe(document.querySelector('.dtb'), { attributes: true, subtree: true, attributeFilter: ['data-on'] });
+    new MutationObserver(() => { const on = [...document.querySelectorAll('.sgm-tabs .sgm-item')].findIndex((e) => e.hasAttribute('data-on')); const l = __tabs[__tabs.length - 1]; if (!l || l.i !== on) __tabs.push({ i: on, t: Math.round(performance.now() - (window.__t0 || 0)) }); })
+      .observe(document.querySelector('.sgm-tabs'), { attributes: true, subtree: true, attributeFilter: ['data-on'] });
   });
   const reset = () => page.evaluate(() => { __ticks = []; __tabs = []; window.__t0 = performance.now(); });
 
@@ -103,24 +104,23 @@ const WEBKIT_SWITCH = () => {
     await touch('touchEnd'); await sleep(400);
     return page.evaluate(() => ({ ticks: __ticks, tabs: __tabs, down: window.__down || 0 }));
   };
+  // tabs chosen before the switch follows the finger (205 ms after the touch landed: the glider's timer), landing
+  // included, owe one tick together; every tab after that ticks
+  const since = (r, tb) => tb.t - r.down;
+  const expected = (r) => r.tabs.filter((tb) => since(r, tb) > 205).length + (r.tabs.some((tb) => since(r, tb) <= 205) ? 1 : 0);
   const along = (from, to, steps) => [...Array(steps + 1)].map((_, k) => from + (to - from) * k / steps);
   const x0 = geo.xs[0], xN = geo.xs[geo.n - 1];
   let r = await drag(300, [...along(x0, xN, 40), ...along(xN, x0, 40).slice(1)], 16);
-  // the tab under the finger is chosen as it lands (no tick then: the switch is not following yet); every tab passed
-  // after that ticks
-  let passed = r.tabs.filter((tb) => tb.t > 220).length;
+  let passed = r.tabs.filter((tb) => since(r, tb) > 205).length;
   let drags = r.ticks.filter((t) => t.why === 'drag');
-  ok(`held, then dragged along the row and back: one tick for each of the ${passed} tabs passed`, passed === 2 * (geo.n - 1) && drags.length === passed && r.ticks.length === passed, { ticks: r.ticks.map((t) => t.t + ' ' + t.why), tabs: r.tabs.map((t) => t.t + ' ' + t.i) });
-  const lag = r.tabs.filter((tb) => tb.t > 220).map((tb) => { const k = r.ticks.find((t) => t.t >= tb.t - 5); return k ? k.t - tb.t : null; });
+  ok(`held, then dragged along the row and back: one tick for each of the ${passed} tabs passed (and one for the tab landed on, if it changed)`, passed === 2 * (geo.n - 1) && drags.length === expected(r) && r.ticks.length === expected(r), { ticks: r.ticks.map((t) => t.t + ' ' + t.why), tabs: r.tabs.map((t) => t.t + ' ' + t.i) });
+  const lag = r.tabs.filter((tb) => since(r, tb) > 205).map((tb) => { const k = r.ticks.find((t) => t.t >= tb.t - 5); return k ? k.t - tb.t : null; });
   ok('each tick comes with its tab (within the next move)', lag.every((l) => l !== null && l <= 40), lag);
 
   // fast: from the first tab to the last in ~0.15 s, right away: the tabs passed before 200 ms cannot tick
   r = await drag(0, along(x0, xN, 10), 16);
   drags = r.ticks.filter((t) => t.why === 'drag');
-  // tabs passed before the switch follows (205 ms after the touch landed: the glider's timer) owe one tick together
-  const since = (tb) => tb.t - r.down;
-  const late = r.tabs.filter((tb) => since(tb) > 205).length, early = r.tabs.some((tb) => since(tb) > 25 && since(tb) <= 205);
-  ok('dragged at once, fast: no tick before WebKit lets the switch follow (200 ms); then one owed for the tabs passed before, and one for each after', r.ticks.length === late + (early ? 1 : 0) && drags.every((t) => t.t - r.down > 200), { down: r.down, ticks: r.ticks, tabs: r.tabs });
+  ok('dragged at once, fast: no tick before WebKit lets the switch follow (200 ms); then one owed for the tabs chosen before, and one for each after', r.ticks.length === expected(r) && drags.every((t) => t.t - r.down > 200), { down: r.down, ticks: r.ticks, tabs: r.tabs });
 
   // to the neighbour at once (in ~100 ms, before WebKit lets the switch follow), then the finger rests there, moving
   // a little: the tick is owed, and comes as soon as the switch follows the finger
@@ -130,8 +130,14 @@ const WEBKIT_SWITCH = () => {
 
   // slow, starting at once: ticks for every tab passed after 200 ms
   r = await drag(0, along(x0, xN, 60), 16);
-  const after = r.tabs.filter((tb) => tb.t > 220).length;
-  ok(`dragged at once, slowly: a tick for each of the ${after} tabs passed after 200 ms`, r.ticks.length === after && r.ticks.every((t) => t.why === 'drag'), { ticks: r.ticks.map((t) => t.t), tabs: r.tabs.map((t) => t.t + ' ' + t.i) });
+  const after = r.tabs.filter((tb) => since(r, tb) > 205).length;
+  ok(`dragged at once, slowly: a tick for each of the ${after} tabs passed after 200 ms (and the owed one)`, r.ticks.length === expected(r) && r.ticks.every((t) => t.why === 'drag'), { ticks: r.ticks.map((t) => t.t), tabs: r.tabs.map((t) => t.t + ' ' + t.i) });
+
+  // landed on another tab, held, then dragged one tab on: two ticks, the landing's as the drag starts
+  await reset(); await touch('touchStart', geo.xs[2], geo.y); await touch('touchEnd'); await sleep(500);   // tab 2 chosen
+  r = await drag(300, [geo.xs[0], ...along(geo.xs[0], geo.xs[1], 20)], 16);
+  ok('landed on another tab, held, then dragged to the next: a tick for each, both while dragging',
+    r.ticks.length === 2 && r.ticks.every((t) => t.why === 'drag'), { ticks: r.ticks, tabs: r.tabs });
 
   // held without moving: the lift ticks (a tap held long)
   r = await drag(500, [geo.xs[2]], 16);
@@ -139,15 +145,14 @@ const WEBKIT_SWITCH = () => {
 
   // a busy page: every tab change keeps the main thread 260 ms (a heavy page drawn), so WebKit's 200 ms comes late
   await page.evaluate(() => { window.__busy = new MutationObserver(() => { const t = performance.now(); while (performance.now() - t < 260); });
-    __busy.observe(document.querySelector('.dtb'), { attributes: true, subtree: true, attributeFilter: ['data-on'] }); });
+    __busy.observe(document.querySelector('.sgm-tabs'), { attributes: true, subtree: true, attributeFilter: ['data-on'] }); });
   r = await drag(0, [...along(geo.xs[1], geo.xs[2], 6), ...Array(12).fill(geo.xs[2]), ...along(geo.xs[2], geo.xs[4], 30)], 16);
-  const changes = r.tabs.length - 1;                              // the one chosen on landing does not count
-  ok(`a busy page (each tab drawn in 260 ms): the neighbour reached early still ticks, then each tab after it: ${changes} ticks while dragging`,
-    r.ticks.filter((t) => t.why === 'drag').length === changes && r.ticks.length === changes, { ticks: r.ticks, tabs: r.tabs });
+  ok(`a busy page (each tab drawn in 260 ms): the tabs reached early owe a tick, then each tab after: ${expected(r)} ticks while dragging`,
+    r.ticks.filter((t) => t.why === 'drag').length === expected(r) && r.ticks.length === expected(r), { ticks: r.ticks, tabs: r.tabs });
   await page.evaluate(() => __busy.disconnect());
 
   // the switch is back over the row, and the row still works by mouse/keyboard-free taps afterwards
-  const back = await page.evaluate(() => document.querySelector('.dtb input[switch]').style.transform);
+  const back = await page.evaluate(() => document.querySelector('.sgm-tabs input[switch]').style.transform);
   ok('the switch is back over the row after a touch', back === '' || back === 'none', back);
   if (errs.length) { failed++; console.log('page errors', errs); }
   await browser.close(); server.close();

@@ -5,7 +5,7 @@ import { Animated, BackHandler, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { DepthStackView } from './nav/DepthStackView';
-import { DotTabBar } from './ui/DotTabBar';
+import { Segmented } from './ui/Segmented';
 import { PlayerSheet, Receding, Sinking, sheetMotion } from './ui/PlayerSheet';
 import { MiniPlayer } from './ui/MiniPlayer';
 import { Glass } from './ui/Glass';
@@ -87,8 +87,10 @@ function App() {
       <Sinking motion={motion.current} inert={player} style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom - 4, 26), alignItems: 'center' }}>
         <View pointerEvents="box-none" style={{ width: '100%', maxWidth: COLUMN, paddingHorizontal: GUTTER, gap: 8 }}>
           {bar ? <MiniPlayer /> : null}
-          <DotTabBar
-            tabs={TABS}
+          <Segmented
+            look="tabs"
+            label="页签"
+            items={TABS}
             index={tab}
             onChange={(i) => set({ tab: i })}
             onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}

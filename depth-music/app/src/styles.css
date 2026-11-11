@@ -136,7 +136,7 @@ html.back-plain .nav .tap { background: none; border: 0; box-shadow: none; -webk
 .wave { display: block; --prog: 0; -webkit-mask: center / 100% 100% no-repeat; mask: center / 100% 100% no-repeat;
   background: linear-gradient(90deg, var(--wave-acc, var(--fg)) calc(var(--prog) * 100%), var(--wave-rest) calc(var(--prog) * 100%)) }
 
-/* ---- floating chrome: the play bar (optional) and the tab row (src/ui/DotTabBar) ---- */
+/* ---- floating chrome: the play bar (optional) and the tab row (src/ui/Segmented, look="tabs") ---- */
 .chrome { position: absolute; z-index: 5;
   left: max(var(--edge-l), calc((100vw - var(--bar)) / 2)); right: max(var(--edge-r), calc((100vw - var(--bar)) / 2));
   bottom: max(var(--sab, 0px) - 4px, 26px);   /* above the home indicator, clear of the screen's edge: the blur ends above it */

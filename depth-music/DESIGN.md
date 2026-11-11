@@ -139,17 +139,31 @@
 - 底栏：和推入一个页面时一样，被播放器原地盖住，见第 7 节「只在四个根页面上」。播放器自己没有毛玻璃，背景就是后面那一屏。
 - 在播放器里点相似曲目：原地换歌。点音乐人或标签：先收起，再在下面的页签里打开对应页面。
 
-## 7. 底栏（DotTabBar）
+## 7. 分段切换和底栏（Segmented）
 
-以后常用的底栏。网页版是 `app/src/ui/DotTabBar.web.jsx`，自带样式，加上 `glider.js`、`platform.js` 即可搬走；iOS / Android 版是 `app/src/ui/DotTabBar.jsx`，属性相同。
+底栏就是一个分段切换，和页面里的分段切换是同一个组件 `Segmented`：手势、弹簧、触感完全一样，只有样式不同（`look`）。网页版是 `app/src/ui/Segmented.web.jsx`，自带样式，加上 `glider.js`、`platform.js` 即可搬走；iOS / Android 版是 `app/src/ui/Segmented.jsx`，属性相同。
+
+```jsx
+<Segmented items={['WAV', 'MP3']} index={i} onChange={setI} label="下载格式" />
+<Segmented look="tabs" label="页签" items={[{ key: 'home', label: '发现', icon: <Icon name="compass" size={25} /> }, …]}
+  index={tab} onChange={setTab} onReselect={popToRoot} />
+```
+
+- `items`：字符串，或 `{ key, label, icon }`（有图标时 label 给读屏用）。项数随意。
+- `onChange(i)`：手指经过的每一项都会调用（落下时、拖动途中）；`onReselect(i)`：点已经选中的那一项。
+- `look="pill"`（默认）：浅色轨道上一个胶囊滑块。各项一样宽，宽度取最宽那一项（和 iOS 的分段控件一样）；控件就是各项加起来那么宽，给了宽度就平分。
+- `look="tabs"`：底栏，下面这些。
+- `height`：唯一的尺寸旋钮，内边距、字号、滑块、圆点都跟着它（默认 34 / 52）。
+- 颜色是带默认值的 CSS 变量：`--sgm-fg`（选中的项、圆点）、`--sgm-muted`（其余）、`--sgm-track`（轨道）、`--sgm-pill`（胶囊滑块）、`--sgm-blur`（底栏模糊半径，默认 18px）。
+
+底栏（`look="tabs"`）：
 
 - 只有图标，没有文字。当前页签的图标是墨色，其余是三级灰；当前图标下方有一个 6px 的圆点。
 - 高 52px。图标 25px，在这一行里垂直居中。
 - 没有底色、边框和阴影。图标后面是一条只做模糊的胶囊（18px），大小就是底栏这一行本身（52 高，两端半圆），模糊均匀铺到边缘，边缘是清晰的。
-- 可选的 `feather` 属性：改成向四周渐渐变清晰、没有边缘的样子（中间约 44px 高完全模糊，向外约 28px 渐清；这时底栏离屏幕底边至少留 26px）。
-- 触感：iPhone 上一个看不见的原生开关铺满整条底栏，手指一按就落在开关本身上（`ui/glider.js`，分段切换也一样）。安卓走震动接口，每经过一个页签震一下。
+- 触感（两种样式都一样）：iPhone 上一个看不见的原生开关铺满整个控件，手指一按就落在开关本身上（`ui/glider.js`）。安卓走震动接口，每经过一项震一下；原生端用 expo-haptics，也是每经过一项震一下。
   - 点按：抬手时开关自己点一下自己，震一下。以前开关是 1px 藏在 `<label>` 里，靠点按产生的 click 去拨它；可底栏一按下就切页签、显示新页面，WebKit 会把「点完冒出新内容」的点按当成 hover，不派发 click，所以点别的页签不震、点当前页签才震。
-  - 拖动：按住 200ms 后，WebKit 让开关跟着手指拖，手指每越过开关的中线（按开关自己的坐标，算上 transform）就翻一次、震一下。所以拖动时开关一直待在手指的一侧，手指每进入一个新页签，就把开关挪到手指的另一侧，下一次 touchmove 就越过中线、震一下。按下后 200ms 内开关还不跟手指（WebKit 的延迟），这期间经过的页签记一笔，开关一跟上就在下一次移动时补震一下（快速划到相邻页签也会震）。
+  - 拖动：按住 200ms 后，WebKit 让开关跟着手指拖，手指每越过开关的中线（按开关自己的坐标，算上 transform）就翻一次、震一下。所以拖动时开关一直待在手指的一侧，手指每进入一个新页签，就把开关挪到手指的另一侧，下一次 touchmove 就越过中线、震一下。按下后 200ms 内开关还不跟手指（WebKit 的延迟），这期间的选择（包括手指落下时选中的那一项）记一笔，开关一跟上就在下一次移动时补震一下（快速划到相邻页签也会震）。
     - 「开关跟上了」不能凭手指按下后过了多久来猜：切页签时页面忙，WebKit 的 200ms 会晚到；没跟上就把开关挪过去，开关会以为一开始就在那边，这次拖动后面的页签就全不震了。所以在 touchstart 里起一个 205ms 的计时器，它和 WebKit 的计时器按到期先后执行，再忙也排在 WebKit 的后面。
     - 每次手指移动最多震一下：同一次移动之前把开关挪过去两次，等于没挪。要震的多了就排队，留到后面的移动。
   - 依据是 WebKit 的 `CheckboxInputType.cpp`（开关）和 `ContentChangeObserver.cpp`（点按变 hover）。`app/tests/tab-haptics.js` 照这两份源码在 Chromium 里模拟开关来验证。
@@ -178,7 +192,7 @@
 
 - 整个过程只有底栏自己的胶囊这一层 `backdrop-filter`，子页面和播放器上都不加。在 Safari（「图层滤镜」）里，后面那一屏的虚化是普通的 `filter: blur()`，底栏的胶囊叠在它上面——这正是子页面里一直正常的那种叠法。
 - 只写底栏里几个叶子元素自己的样式值：图标和圆点的 `filter`、`opacity`，胶囊的 `backdrop-filter`，播放条的 `opacity`。底栏本身、装它的容器、胶囊的任何一层祖先都不写（容器上只有 `inert`），也不挂任何动画。原因见下面「毛玻璃和透明度」：祖先上的透明度、滤镜、或这两者的动画，都会让胶囊变透明。
-- 实现：`app/src/ui/DotTabBar.web.jsx` 的 `coverDotTabBar(bar, f)` 写叶子元素；`app/src/lib/chrome-cover.js` 取“页面栈盖了几层”和“播放器升到哪了”里大的那个；页面栈（`lib/depth-stack.js` 的 `onDepth`）和播放器（`onCover`）每一帧报告自己盖住了多少。
+- 实现：`app/src/lib/chrome-cover.js` 的 `coverRow(bar, f)` 写叶子元素；它取“页面栈盖了几层”和“播放器升到哪了”里大的那个；页面栈（`lib/depth-stack.js` 的 `onDepth`）和播放器（`onCover`）每一帧报告自己盖住了多少。
 
 检查脚本，都在两种手势驱动下跑：
 
@@ -223,23 +237,10 @@
 所以规矩是：
 
 - 底栏和它所有的祖先元素，只用 `transform` 移动。不设 `opacity`，不设 `filter`，不放透明度动画，也不写 `will-change: opacity`。
-- 要让底栏变淡或被盖住，只动它里面的叶子元素（`coverDotTabBar`，或组件的 `--dtb-o`：图标和圆点各自变淡，毛玻璃用自己 `backdrop-filter` 里的 `opacity()` 变薄）。这些都不在毛玻璃的祖先上。
+- 要让底栏变淡或被盖住，只动它里面的叶子元素（`.sgm-item`、`.sgm-ink`、`.sgm-haze`，见 `coverRow`：图标和圆点各自变淡变虚，毛玻璃调自己 `backdrop-filter` 的半径）。这些都不在毛玻璃的祖先上。
 - 其他浮着的毛玻璃（玻璃圆钮、播放条、毛玻璃罩）同理。
 
 这条规矩是在无头 Chromium 里用像素量出来的（`app/tests/glass.js` 量的是整个 App，上面那张表量的是最小页面）。iPhone Safari 上没有验证，用上面那个对照页在真机上看。
-
-用法：
-
-```jsx
-<DotTabBar
-  tabs={[{ key: 'home', label: '发现', icon: <Icon name="compass" size={25} /> }, …]}
-  index={tab}
-  onChange={(i) => setTab(i)}
-  onReselect={(i) => popToRoot(i)}
-/>
-```
-
-可以用 CSS 变量覆盖：`--dtb-fg`（当前图标和圆点）、`--dtb-muted`（其余图标）、`--dtb-blur`（模糊半径，默认 18px）、`--dtb-o`（整条的浓淡，1 到 0）。
 
 ## 8. 列表行
 
@@ -281,13 +282,13 @@
 |---|---|---|
 | `App` | 入口 `main.jsx` + `index.html` | 入口 `index.js`（`registerRootComponent`） |
 | `nav/DepthStackView` | 原生滚动手势 + 滚动时间线（`lib/depth-stack.js`） | `Animated` + `PanResponder`，模糊用 expo-blur |
-| `ui/DotTabBar` | `<label>` + 隐藏开关，`glider.js` 的弹簧 | 同一套弹簧参数，触感用 expo-haptics |
+| `ui/Segmented`（含底栏） | 铺满的原生开关 + `glider.js` 的弹簧 | `PanResponder` + 同一套弹簧参数，触感用 expo-haptics |
 | `ui/PlayerSheet` | 纵向的原生滚动手势 | `Animated` + `PanResponder` |
 | `ui/Tap` | `<label>` 包隐藏开关 | `Pressable` + expo-haptics |
 | `ui/theme` | CSS 变量，切换时圆形铺开 | 主题值放在 context 里，切换时旧纸面盖上来再淡出 |
 | `ui/fonts` | CSS 里的 Jost | expo-font 加载 Jost |
 | `ui/Icon`、`ui/Cover`、`ui/Wave` | 内联 SVG、canvas、CSS mask | react-native-svg、`View` |
-| `ui/Glass`、`ui/Segmented`、`ui/MiniPlayer` | backdrop-filter、弹簧滑块 | expo-blur、`Animated` |
+| `ui/Glass`、`ui/MiniPlayer` | backdrop-filter、弹簧 | expo-blur、`Animated` |
 
 两端共用的数据和算法：`data.js`、`state.js`、`artdata.js`（封面和波形的形状）、`ui/icon-paths.js`、`ui/color.js`（oklch 转 sRGB，原生端用）。
 
@@ -324,11 +325,10 @@ npm run build
 ## 11. 原生端和网页端不一样的地方
 
 - **后面那页的虚化**：网页在 Chrome / Edge 里是盖一层毛玻璃罩，在其他浏览器里是对那一层本身做模糊；原生端是在它上面盖一层 expo-blur，模糊强度跟着翻页进度走。Android 上 expo-blur 默认不做真模糊，只是一层半透明的色调，所以 Android 上后面那页是缩小、下沉、变淡，但不虚。
-- **底栏的模糊胶囊**：网页上向四周渐渐变清晰、没有边缘；原生端没法给模糊做渐变遮罩，iOS 上用三层由外到内逐渐加强的胶囊来近似，Android 上是一个半透明胶囊。
+- **底栏的模糊胶囊**：原生端用 expo-blur；Android 上 expo-blur 默认不做真模糊，是一个半透明胶囊。
 - **内容错开进入**：网页上新页的各块依次错开 20ms 进来；原生端整页一起进。
 - **主题切换**：网页从按钮处圆形铺开；原生端是旧纸面盖上来再淡出。
 - **播放条**：网页上可以左右滑切歌；原生端只有点按。
-- **分段切换**：网页上滑块跟手；原生端只有点按。
 - **Android 的返回键**：先收播放器，再退一页，在页签第一页时交给系统。
 - **底栏只在根页面上**：网页上已经这样做了。原生端还是旧的：推入子页面时底栏还在，播放器升起时底栏往下沉出屏幕。
 

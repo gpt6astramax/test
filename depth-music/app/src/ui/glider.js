@@ -1,4 +1,4 @@
-// The glider behind the tab row and the segmented control: one implementation, so both feel the same.
+// The glider: the gesture, spring and haptics of Segmented (./Segmented.web.jsx), in either look.
 //
 // The ink is moved by a spring, never set in place, so it cannot jump: a tap pulls it towards the finger and the
 // release lets it swing to the item; press and drag and it trails the finger, picking whatever item it passes.
@@ -31,14 +31,18 @@ export function attachGlider(bar, opt) {
   const items = Array.from(bar.querySelectorAll('[data-gl-item]'));
   const ink = bar.querySelector('[data-gl-ink]');
   const n = items.length;
-  const inset = opt.inset == null ? 3 : opt.inset;
+  let inset = 0;                                                   // the bar's padding: the items lie inside it
   const dot = !!opt.dot;
   let index = opt.index || 0, seg = 0, held = false, pid = null, startIndex = 0;
   let x = 0, v = 0, target = 0, hold = 0, raf = 0, last = 0;       // position, speed, where it is heading, how "held" it looks
   let ran = 0;                                                     // when the loop last ran a frame (performance.now())
   let freeSince = 0;                                               // when the finger let go (0: held, or at rest)
 
-  const measure = () => { seg = (bar.clientWidth - inset * 2) / n; ink.style.width = seg + 'px'; };
+  const measure = () => {
+    inset = parseFloat(getComputedStyle(bar).paddingLeft) || 0;
+    seg = (bar.clientWidth - inset * 2) / n;
+    ink.style.width = seg + 'px';
+  };
 
   // ---- the iPhone's switch, over the whole bar (see the top of this file)
   const sw = bar.querySelector('input[switch]');
@@ -47,7 +51,7 @@ export function attachGlider(bar, opt) {
       opacity: '0', zIndex: '3', pointerEvents: 'auto', cursor: 'inherit', transform: '' });
     sw.setAttribute('aria-hidden', 'true');
   }
-  let swTouch = false, swOn = false, swFollows = false, swOwed = false, swTicks = 0, swTimer = 0;
+  let swTouch = false, swOn = false, swFollows = false, swOwed = false, swTicks = 0, swTimer = 0, swLanded = false;
   // Keep the switch off to the left of the finger ('on': the finger on its right side) or to the right ('off'), far
   // past any point where WebKit would flip it (its middle; at first, 40% of its width from where the finger started,
   // which can be anywhere the finger has been since).
@@ -61,7 +65,8 @@ export function attachGlider(bar, opt) {
   // the touch landed on the switch (a listener on it: runs before WebKit's default handling starts its timer)
   function switchDown(e) {
     if (e.targetTouches.length !== 1) return;
-    swTouch = true; swOn = sw.checked; swFollows = false; swOwed = false; swTicks = 0;
+    // landing on another item chose it (pointerdown comes first): that is owed a tick too
+    swTouch = true; swOn = sw.checked; swFollows = false; swOwed = swLanded; swLanded = false; swTicks = 0;
     clearTimeout(swTimer);
     swTimer = setTimeout(() => {
       if (!swTouch) return;
@@ -141,7 +146,9 @@ export function attachGlider(bar, opt) {
     document.addEventListener('pointercancel', end, true);
     // a touch stays with the bar it went down on; only the mouse needs capturing, to keep a drag that leaves the bar
     if (e.pointerType === 'mouse') { try { bar.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ } }
-    const a = at(e); to(a.pos); choose(a.i);
+    const a = at(e); to(a.pos);
+    const landed = choose(a.i);
+    if (sw && e.pointerType === 'touch') { if (swTouch) swOwed = swOwed || landed; else swLanded = landed; }
   }
   function move(e) {
     if (!held || e.pointerId !== pid) return;
@@ -151,6 +158,7 @@ export function attachGlider(bar, opt) {
   // Let go: the pill springs back onto the chosen item.
   function release() {
     switchUp();
+    swLanded = false;
     held = false;
     freeSince = performance.now();
     document.removeEventListener('pointerup', end, true);

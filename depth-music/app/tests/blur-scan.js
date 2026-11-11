@@ -53,7 +53,7 @@ function stripes(img, y, x0, x1) { const n = x1 - x0; let mean = 0; for (let x =
       const s = document.createElement('div');
       s.style.cssText = `position:absolute;inset:0;pointer-events:none;z-index:${z - 1};background:repeating-linear-gradient(90deg,#000 0 ${period / 2}px,#fff ${period / 2}px ${period}px)`;
       c.parentElement.insertBefore(s, c);
-      const r = document.querySelector('.dtb-haze').getBoundingClientRect();
+      const r = document.querySelector('.sgm-haze').getBoundingClientRect();
       return { l: r.left, t: r.top, w: r.width, h: r.height };
     }, PERIOD);
     const clip = { x: 0, y: Math.round(info.t) - 20, width: 393, height: Math.round(info.h) + 40, scale: 1 };

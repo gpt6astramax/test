@@ -3,7 +3,7 @@
 // where it is (lib/chrome-cover.js).
 import * as React from 'react';
 import { DepthStackView } from './nav/DepthStackView';
-import { DotTabBar } from './ui/DotTabBar';
+import { Segmented } from './ui/Segmented';
 import { PlayerSheet } from './ui/PlayerSheet';
 import { MiniPlayer } from './ui/MiniPlayer';
 import { Icon } from './ui/Icon';
@@ -92,8 +92,10 @@ export default function App() {
   const chromeEl = (
     <div className="chrome" ref={chrome}>
       {bar ? <MiniPlayer /> : null}
-      <DotTabBar
-        tabs={TABS}
+      <Segmented
+        look="tabs"
+        label="页签"
+        items={TABS}
         index={tab}
         onChange={(i) => set({ tab: i })}
         onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}
