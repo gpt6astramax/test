@@ -13,6 +13,7 @@ import Artist from './screens/Artist';
 import Collection from './screens/Collection';
 import Player from './screens/Player';
 import { useStore, set, closePlayer } from './state';
+import { chromeStays } from './lib/chrome-mode';
 
 const SCREENS = { artist: Artist, collection: Collection };
 const TABS = [
@@ -26,6 +27,8 @@ export default function App() {
   const tab = useStore((s) => s.tab);
   const bar = useStore((s) => s.bar);
   const player = useStore((s) => s.player);
+  const mode = useStore((s) => s.chromeMode);
+  const stays = chromeStays(mode);
   const message = useStore((s) => s.toast);
   const stacks = React.useRef([]);
   const under = React.useRef(null);
@@ -40,7 +43,7 @@ export default function App() {
     const stop = (e) => { if (e.cancelable && !(e.target.closest && e.target.closest('.sg'))) e.preventDefault(); };
     el.addEventListener('touchmove', stop, { passive: false });
     return () => el.removeEventListener('touchmove', stop, { passive: false });
-  }, []);
+  }, [stays]);                                  // the chrome is a new element when it moves in or out of `under`
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape' && !player && stacks.current[tab] && stacks.current[tab].depth) stacks.current[tab].pop(); };
     document.addEventListener('keydown', onKey);
@@ -56,28 +59,33 @@ export default function App() {
     if (p && stacks.current[tab]) stacks.current[tab].push(p[0], p[1]);
   };
 
+  // The floating chrome. Where it lives depends on what it does while the player is up (lib/chrome-mode.js): by
+  // default outside what goes out of focus, because its blur must never sit inside something that is itself blurred.
+  const chromeEl = (
+    <div className="chrome" ref={chrome}>
+      {bar ? <MiniPlayer /> : null}
+      <DotTabBar
+        tabs={TABS}
+        index={tab}
+        onChange={(i) => set({ tab: i })}
+        onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}
+      />
+    </div>
+  );
+
   return (
     <>
-      {/* what goes out of focus behind the player: the pages */}
+      {/* what goes out of focus behind the player: the pages, and the chrome too in the modes that keep it there */}
       <div className="under" ref={under}>
         <main className="views">
           {TABS.map((t, i) => (
             <DepthStackView key={t.key} ref={(r) => { stacks.current[i] = r; }} active={tab === i} label={t.label} root={t.root} screens={SCREENS} />
           ))}
         </main>
+        {stays ? chromeEl : null}
       </div>
-      {/* The floating chrome is not in there: its blur must never sit inside something that is itself blurred. It
-          sinks out of the screen while the player is up. */}
-      <div className="chrome" ref={chrome}>
-        {bar ? <MiniPlayer /> : null}
-        <DotTabBar
-          tabs={TABS}
-          index={tab}
-          onChange={(i) => set({ tab: i })}
-          onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}
-        />
-      </div>
-      <PlayerSheet open={player} under={under} aside={chrome} onClosed={onPlayerClosed}>
+      {stays ? null : chromeEl}
+      <PlayerSheet open={player} under={under} aside={chrome} asideMode={mode} onClosed={onPlayerClosed}>
         <Player onNavigate={fromPlayer} />
       </PlayerSheet>
       <div id="toast" className={'glass' + (message ? ' on' : '')} role="status">{message || ''}</div>

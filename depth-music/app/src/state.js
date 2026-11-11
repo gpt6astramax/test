@@ -4,8 +4,9 @@
 // components that show it follow the tick with useProgress().
 import { useSyncExternalStore } from 'react';
 import { TRACKS, byId, mmss } from './data';
+import { getChromeMode, saveChromeMode } from './lib/chrome-mode';
 
-export const state = { cur: 't7', t: 96, playing: true, liked: { t1: 1, t8: 1, t4: 1 }, tab: 0, bar: false, player: false, toast: null };
+export const state = { cur: 't7', t: 96, playing: true, liked: { t1: 1, t8: 1, t4: 1 }, tab: 0, bar: false, player: false, toast: null, chromeMode: getChromeMode() };
 const listeners = new Set();
 const emit = () => listeners.forEach((fn) => fn());
 export function set(patch) { Object.assign(state, patch); emit(); }
@@ -14,6 +15,8 @@ const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn)
 export const useStore = (select) => useSyncExternalStore(subscribe, () => select(state));
 
 export const cur = () => byId[state.cur];
+/** What the tab row does while the player is up (lib/chrome-mode.js). */
+export function setChromeMode(m) { saveChromeMode(m); set({ chromeMode: m }); }
 
 // ---- progress, written to the DOM directly
 const shown = new Set();           // { el, id, kind: 'var' | 'time' }

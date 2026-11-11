@@ -4,7 +4,9 @@ import { Big, Lede, Fine, RootHead, Section, Stats, SetRow, ArtistDisc } from '.
 import { Segmented } from '../ui/Segmented';
 import { themed } from '../ui/themed';
 import { TRACKS, ARTISTS } from '../data';
-import { useStore, set } from '../state';
+import { Tap } from '../ui/Tap';
+import { useStore, set, setChromeMode } from '../state';
+import { CHROME_MODES } from '../lib/chrome-mode';
 import { getDriver, setDriver } from '../lib/driver';
 
 const WEB = Platform.OS === 'web';
@@ -66,9 +68,33 @@ export default function Me() {
         <Fine>{WEB ? `版本 ${BUILD} · React Native（react-native-web）` : `React Native · ${Platform.OS === 'ios' ? 'iOS' : 'Android'}（Expo）`}</Fine>
       </Section>
 
+      {WEB ? <ChromeSection /> : null}
       {WEB ? <GestureSection /> : null}
       {WEB ? <FitSection /> : null}
     </>
+  );
+}
+
+// Web only: what the tab row does while the player is up. Several ways, to compare on a device.
+function ChromeSection() {
+  const S = useS();
+  const mode = useStore((s) => s.chromeMode);
+  return (
+    <Section title="播放器升起时的底栏">
+      <View>
+        {CHROME_MODES.map((m, i) => (
+          <Tap key={m.key} role="radio" aria-checked={m.key === mode} label={m.title} onPress={() => setChromeMode(m.key)}
+            style={[S.pick, i === CHROME_MODES.length - 1 && { borderBottomWidth: 0 }]}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={S.pickTitle}>{m.title}</Text>
+              <Text style={S.pickNote}>{m.note}</Text>
+            </View>
+            <View style={[S.ring, m.key === mode && S.ringOn]}>{m.key === mode ? <View style={S.ringDot} /> : null}</View>
+          </Tap>
+        ))}
+      </View>
+      <Fine>下次打开播放器时生效。前四种把底栏放在被虚化的那一层外面，后两种留在里面。</Fine>
+    </Section>
   );
 }
 
@@ -114,4 +140,10 @@ const useS = themed((c, f) => ({
   li: { flexDirection: 'row', gap: 8 },
   bullet: { ...f.text, fontSize: 15, lineHeight: 23, color: c.fg3 },
   liText: { ...f.text, flex: 1, fontSize: 15, lineHeight: 23, color: c.fg2 },
+  pick: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: c.hair },
+  pickTitle: { ...f.text, fontSize: 15, lineHeight: 21, color: c.fg },
+  pickNote: { ...f.text, fontSize: 12.5, lineHeight: 18, color: c.fg2 },
+  ring: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: c.fg3, alignItems: 'center', justifyContent: 'center' },
+  ringOn: { borderColor: c.fg },
+  ringDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.fg },
 }));
