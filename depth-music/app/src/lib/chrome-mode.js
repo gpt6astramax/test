@@ -2,8 +2,8 @@
 // choice is kept in localStorage and applies the next time the player opens.
 //
 // The constraint they all work around: glass (a backdrop blur, here the tab row's) only sees what is behind it as
-// long as nothing it sits in has an opacity below 1, an opacity animation (even one that stays at 1) or a filter.
-// Any of those and it shows as clear glass. What lies under the player fades and goes out of focus, so:
+// long as nothing it sits in has an opacity below 1, an opacity animation (even one that stays at 1), will-change:
+// opacity or a filter. Any of those and it shows as clear glass. (The glass's own opacity is fine: it only thins it.) What lies under the player fades and goes out of focus, so:
 //   outside that layer, and leaving by a transform only:   sink, rise, left
 //   outside it, staying in place:                          fade (its parts dim; the glass thins through the
 //                                                          opacity() of its own backdrop-filter)

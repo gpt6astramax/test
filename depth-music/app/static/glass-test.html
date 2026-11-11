@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>毛玻璃在什么情况下失效</title>
+<style>
+  html { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100% }
+  body { margin: 0; font: 15px/1.5 -apple-system, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif; color: #111;
+    /* sharp stripes behind everything: where a blur works they are gone, where it fails they show through */
+    background: repeating-linear-gradient(90deg, #111 0 12px, #fff 12px 24px) fixed }
+  main { max-width: 460px; margin: 0 auto; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 40px) }
+  .note, .case > p { background: #fff; border-radius: 12px; padding: 10px 14px; margin: 0 }
+  .note { margin-bottom: 18px }
+  .note b { font-weight: 600 }
+  .case { margin-bottom: 18px }
+  .case > p { border-radius: 12px 12px 0 0; padding-bottom: 8px }
+  .case > p small { display: block; color: #666; font-size: 12.5px; line-height: 1.45 }
+  .case > p code { font: 12.5px/1.4 ui-monospace, Menlo, Consolas, monospace; background: #f0f0f0; border-radius: 4px; padding: 0 4px }
+  /* the sample: a strip of the striped ground with one capsule of glass on it */
+  .stage { height: 84px; display: grid; place-items: center; border-radius: 0 0 12px 12px; outline: 2px solid #fff; outline-offset: -2px }
+  .wrap { width: 78%; height: 52px }
+  .glass { width: 100%; height: 100%; border-radius: 999px; box-sizing: border-box; border: 1px solid rgb(255 255 255 / .9);
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px) }
+  .ok { color: #0a7a3c } .bad { color: #b3261e }
+  @keyframes one { from { opacity: 1 } to { opacity: 1 } }
+  @keyframes slide { from { transform: translateX(-14px) } to { transform: translateX(14px) } }
+</style>
+</head>
+<body>
+<main>
+  <div class="note">
+    <b>怎么看：</b>每一格里有一条胶囊形的毛玻璃，盖在黑白条纹上。胶囊里是<b>一片灰，看不到条纹</b>，说明模糊在起作用；胶囊里<b>能看到清晰的条纹</b>，说明模糊失效了。
+    每格标题下面写着无头 Chromium 153 里量到的结果，供对照。Safari 上没有量过，以你看到的为准。
+  </div>
+
+  <div class="case"><p>1 · 对照：什么都不加<small>Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="wrap"><div class="glass"></div></div></div></div>
+
+  <div class="case"><p>2 · 毛玻璃自己的 <code>opacity: .5</code><small>Chromium：<span class="ok">半糊</span>（清晰和模糊各一半叠在一起，是正常的变淡）</small></p>
+    <div class="stage"><div class="wrap"><div class="glass" style="opacity:.5"></div></div></div></div>
+
+  <div class="case"><p>3 · 毛玻璃自己带透明度动画，数值一直是 1<small>Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="wrap"><div class="glass" style="animation:one 1000s linear infinite"></div></div></div></div>
+
+  <div class="case"><p>4 · <code>backdrop-filter: blur(18px) opacity(.5)</code><small>Chromium：<span class="ok">半糊</span>（和第 2 格一样）</small></p>
+    <div class="stage"><div class="wrap"><div class="glass" style="-webkit-backdrop-filter:blur(18px) opacity(.5);backdrop-filter:blur(18px) opacity(.5)"></div></div></div></div>
+
+  <div class="case"><p>5 · 外面一层的 <code>opacity: .5</code><small>Chromium：<span class="bad">失效</span>，条纹清晰</small></p>
+    <div class="stage"><div class="wrap" style="opacity:.5"><div class="glass"></div></div></div></div>
+
+  <div class="case"><p>6 · 外面一层的 <code>opacity: .99</code><small>Chromium：<span class="bad">失效</span></small></p>
+    <div class="stage"><div class="wrap" style="opacity:.99"><div class="glass"></div></div></div></div>
+
+  <div class="case"><p>7 · 外面一层带透明度动画，数值一直是 1<small>Chromium：<span class="bad">失效</span>。上一版的「跟着上升」就是这种情况</small></p>
+    <div class="stage"><div class="wrap" style="animation:one 1000s linear infinite"><div class="glass"></div></div></div></div>
+
+  <div class="case"><p>8 · 外面一层的 <code>will-change: opacity</code><small>Chromium：<span class="bad">失效</span></small></p>
+    <div class="stage"><div class="wrap" style="will-change:opacity"><div class="glass"></div></div></div></div>
+
+  <div class="case"><p>9 · 外面一层的 <code>filter: brightness(1)</code>（一个什么都不改的滤镜）<small>Chromium：<span class="bad">失效</span></small></p>
+    <div class="stage"><div class="wrap" style="-webkit-filter:brightness(1);filter:brightness(1)"><div class="glass"></div></div></div></div>
+
+  <div class="case"><p>10 · 外面一层的 <code>transform</code>（缩小、位移）<small>Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="wrap" style="transform:translateY(6px) scale(.9)"><div class="glass"></div></div></div></div>
+
+  <div class="case"><p>11 · 外面一层带位移动画<small>Chromium：<span class="ok">糊</span>。现在底栏离开屏幕用的就是这种</small></p>
+    <div class="stage"><div class="wrap" style="animation:slide 1.2s ease-in-out infinite alternate"><div class="glass"></div></div></div></div>
+
+  <div class="note">
+    结论（Chromium）：毛玻璃自己怎么变淡都行；<b>外面任何一层</b>带透明度、透明度动画、<code>will-change: opacity</code> 或滤镜，它就取不到后面的画面。只用 <code>transform</code> 移动外面那层则没问题。
+  </div>
+</main>
+<script>
+  // no pinch zoom (iOS ignores user-scalable=no); touch-action on <html> already takes care of the double tap
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) { document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false }); });
+</script>
+</body>
+</html>

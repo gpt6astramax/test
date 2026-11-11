@@ -16,7 +16,8 @@
 // - Self-contained: it brings its own CSS. Colours come from CSS variables with fallbacks, so it follows a theme:
 //     --dtb-fg (current icon and dot, default var(--fg) or #111), --dtb-muted (other icons), --dtb-blur (default 18px)
 // - Glass and opacity do not mix: the blur stops working as soon as the row, or anything it sits in, has an opacity
-//   below 1, an opacity animation (even one that stays at 1) or a filter. So: move the row with transforms only. To
+//   below 1, an opacity animation (even one that stays at 1), will-change: opacity or a filter (measured: the table
+//   in DESIGN.md, and static/glass-test.html to look at on a device). So: move the row with transforms only. To
 //   fade it, set --dtb-o (1 .. 0) on it or on an ancestor: the icons and the dot dim, and the glass thins through
 //   opacity() inside its backdrop-filter.
 // - Put it in a positioned container at the bottom of the screen. Props: height (default 52), haze (default true),

@@ -74,7 +74,7 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
    goes with each transition is a change under the finger at the very moment the transition ends; see lib/quiet.js. */
 .under { transform-origin: 50% 40%; will-change: transform }
 /* The chrome may be moved, and nothing else: no opacity and no filter on it or on anything it sits in, not even an
-   opacity animation that stays at 1. Any of those and the glass inside it stops blurring. To dim it, --chrome-o dims
+   opacity animation that stays at 1 or will-change: opacity. Any of those and the glass inside it stops blurring. To dim it, --chrome-o dims
    its parts (the tab row's icons and dot, and the strength of its glass through opacity() in the backdrop-filter).
    --chrome-o is a registered number, 1 unless something sets it, so it can be animated and is never undefined. */
 @property --chrome-o { syntax: '<number>'; inherits: true; initial-value: 1 }
