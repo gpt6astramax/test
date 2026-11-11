@@ -5,7 +5,9 @@
  *   driver: 'scroll' (default)
  *     The element becomes a snap scroller laid out as [ +pad | body | -pad ]. Dragging it is ordinary native
  *     scrolling, so finger tracking, momentum and snapping come from the browser / OS, off the main thread.
- *     Followers bind to its scroll timeline (g.timeline) and cost no script per frame.
+ *     Followers bind to its scroll timeline (g.timeline) and cost no script per frame. For the compositor to run
+ *     them (so that they keep step with a finger whatever the main thread is doing), animate transform and opacity
+ *     only: one blur() in the keyframes takes the whole animation to the main thread in Chromium.
  *   driver: 'js'
  *     Nothing scrolls. Touch and wheel input move the body with a transform; letting go hands it to a spring that
  *     carries the finger's speed. Every frame is script, and it can be caught in flight. Followers listen to 'change'
@@ -41,6 +43,7 @@
       '.sg-x{flex-direction:row}' +
       '.sg-y{flex-direction:column}' +
       '.sg>.sg-pad,.sg>.sg-body{flex:0 0 100%;min-width:0;min-height:0;box-sizing:border-box}' +
+      '.sg>.sg-tail{flex:0 0 1px;min-width:0;min-height:0}' +
       // 'scroll': overscroll-behavior only on the gesture axis. On iOS a non-auto value on the other axis also stops
       // the parent from starting a scroll there, e.g. a vertical list could no longer be scrolled from a swipeable row.
       '.sg-x:not(.sg-js){overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;overscroll-behavior-x:none}' +
@@ -139,11 +142,16 @@
     var kf = 'sg-progress-' + id;
 
     // ---- structure: [ +pad | body | -pad ] for 'scroll', the body alone for 'js' ----
+    // With only a +pad the body would rest at the very end of the scroll range, which is the very end of the scroll
+    // timeline: there a scroll-driven animation counts as finished, and Chromium never hands an animation that began
+    // finished to the compositor (nor tries again later), so every follower would be animated by the main thread for
+    // good. One pixel of tail after the body keeps the resting position off the end: [ +pad | body | 1px ]. It is not
+    // a snap area, so nothing ever comes to rest on it.
     var ownBody = !opts.body;
     var body = opts.body || document.createElement('div');
     body.classList.add('sg-body');
     if (ownBody) { while (el.firstChild) body.appendChild(el.firstChild); el.appendChild(body); }
-    var padPos = null, padNeg = null;
+    var padPos = null, padNeg = null, tail = null;
     if (!JS) {
       var pad = function (side) {
         var d = document.createElement('div'); d.className = 'sg-pad'; d.setAttribute('data-side', String(side));
@@ -152,6 +160,7 @@
       };
       if (hasPos) { padPos = pad(1); el.insertBefore(padPos, body); }
       if (hasNeg) { padNeg = pad(-1); el.insertBefore(padNeg, body.nextSibling); }
+      else { tail = document.createElement('div'); tail.className = 'sg-tail'; el.insertBefore(tail, body.nextSibling); }
     }
     el.classList.add('sg', X ? 'sg-x' : 'sg-y');
     if (JS) el.classList.add('sg-js');
@@ -237,7 +246,7 @@
       function measure() {
         sizePx = X ? el.clientWidth : el.clientHeight;
         var s = sizePx * (1 + over);
-        var real = (el[extentProp] - sizePx) / pads;
+        var real = (el[extentProp] - sizePx - (tail ? 1 : 0)) / pads;
         spanPx = s && Math.abs(real - s) <= (1 + over) / 2 + 1 ? real : s;
       }
       var span = function () { if (!spanPx || !ro) measure(); return spanPx; };
@@ -300,25 +309,31 @@
         emit('change', p * range);
       }
 
-      // Called when scrolling may have stopped. needSnap: only accept it when resting on a snap point.
-      function settle(needSnap) {
+      // Called when scrolling may have stopped. mayFinish: if it stopped between snap points, send it on to one.
+      function settle(mayFinish) {
         if (!moved) return;
         var p = raw();
         var side = goal !== null ? goal : Math.round(p);
         if (!sideAllowed(side)) side = 0;
         var dist = Math.abs(el[posProp] - posOf(side));
-        if (needSnap && dist > 1) return;
         if (fingers && !passing) return;                      // still being dragged
-        if (dist > 1) {                                       // came to rest between snap points: finish it
-          if (!fingers) scrollTo(passing && goal === null ? (p > 0 ? 1 : -1) : side, true);
+        if (dist > 1) {                                       // at rest between snap points
+          if (mayFinish && !fingers) scrollTo(passing && goal === null ? (p > 0 ? 1 : -1) : side, true);
           return;
         }
         clearTimeout(idleT);
         dropGoal();
-        moved = false;
+        moved = false; wheeling = false;
         rested(side);
       }
-      function idle() { clearTimeout(idleT); idleT = setTimeout(function () { settle(false); }, 150); }
+      // No scroll event for 150 ms: scrolling has probably stopped. If the surface is then between snap points it is
+      // sent on to one, because a finger that stops a snap in mid-air and lifts again can leave it there (iOS).
+      // Not while a wheel or trackpad is what scrolls it, where the browser has 'scrollend': two fingers resting on
+      // a trackpad in the middle of a swipe send nothing either, no event tells that they are still there, and the
+      // surface would run off from under them. 'scrollend' comes once they have lifted and the snap has run.
+      var hasScrollEnd = 'onscrollend' in window, wheeling = false;
+      function idle() { clearTimeout(idleT); idleT = setTimeout(function () { settle(!(wheeling && hasScrollEnd)); }, 150); }
+      function onWheel() { wheeling = true; }
 
       function onScroll() {
         if (jumping) { jumping = false; writeVar(raw()); return; }                 // jump() already reported it
@@ -329,7 +344,10 @@
       function onScrollEnd() { settle(true); }
 
       el.addEventListener('scroll', onScroll, { passive: true });
-      if ('onscrollend' in window) el.addEventListener('scrollend', onScrollEnd);
+      if (hasScrollEnd) {
+        el.addEventListener('scrollend', onScrollEnd);
+        el.addEventListener('wheel', onWheel, { passive: true });
+      }
       // Positioning happens here: the first callback (and the first one after being display:none) runs after layout
       // and before paint, so a new instance never shows its pad. Later size changes keep the resting side.
       var ro = typeof ResizeObserver === 'function' ? new ResizeObserver(function () {
@@ -349,8 +367,9 @@
         p: raw,
         start: function () {
           if (cssVar && supportsTimeline) {
-            // timeline progress 0 = scrolled to the start (+pad), 1 = scrolled to the end
-            styleEl.sheet.insertRule('@keyframes ' + kf + '{from{' + cssVar + ':' + (hasPos ? range : 0) + '}to{' + cssVar + ':' + (hasNeg ? -range : 0) + '}}', styleEl.sheet.cssRules.length);
+            // timeline progress 0 = scrolled to the start (+pad), 1 = scrolled to the end. With a tail the resting
+            // position is a pixel short of the end, so the resting value is held from 99% on: at rest it is exact.
+            styleEl.sheet.insertRule('@keyframes ' + kf + '{from{' + cssVar + ':' + (hasPos ? range : 0) + '}' + (tail ? '99%,' : '') + 'to{' + cssVar + ':' + (hasNeg ? -range : 0) + '}}', styleEl.sheet.cssRules.length);
             if (!publishers.has(scope)) publishers.set(scope, new Set());
             publishers.get(scope).add(g);
             refreshPublishers(scope);
@@ -363,11 +382,12 @@
         go: function (side) {
           if (side === 0 && passing) setPassing(false);
           dropGoal();
+          wheeling = false;
           if (Math.abs(el[posProp] - posOf(side)) >= 0.5) { goal = side; resumes = 0; watchGoal(); }
           scrollTo(side, true);
         },
         jump: jump,
-        touchStarted: dropGoal,
+        touchStarted: function () { wheeling = false; dropGoal(); },
         touchEnded: function () { if (moved) idle(); },
         destroy: function () {
           clearTimeout(idleT);
@@ -377,6 +397,7 @@
           if (ro) ro.disconnect();
           el.removeEventListener('scroll', onScroll);
           el.removeEventListener('scrollend', onScrollEnd);
+          el.removeEventListener('wheel', onWheel);
           if (cssVar && supportsTimeline) {
             var set = publishers.get(scope);
             if (set) { set.delete(g); refreshPublishers(scope); if (!set.size) publishers.delete(scope); }
@@ -384,6 +405,7 @@
           }
           if (padPos) padPos.remove();
           if (padNeg) padNeg.remove();
+          if (tail) tail.remove();
           el.style.removeProperty('scroll-timeline-name');
           el.style.removeProperty('scroll-timeline-axis');
         }

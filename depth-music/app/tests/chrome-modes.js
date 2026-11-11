@@ -1,6 +1,8 @@
 // What the tab row does while the player is up, in each of the selectable ways (src/lib/chrome-mode.js), with either
-// gesture driver: where it is once the player is up, part of the way down and gone, and whether its blur ever sat,
-// while showing, inside an ancestor that carries a filter (in Safari that shows as clear glass).
+// gesture driver: where it is once the player is up, part of the way down and gone, and whether its glass ever sat,
+// while showing, inside something that switches glass off: an ancestor with a filter, with an opacity below 1, or with
+// an animation that has opacity or a filter in its keyframes (even one that stays at 1). Every frame is checked.
+// (tests/glass.js measures the same thing from pixels.)
 //
 //   npm run build && node tests/chrome-modes.js        (needs Playwright with Chromium)
 const { chromium } = require('playwright');
@@ -28,16 +30,26 @@ const EXPECT_CLEAN = { sink: true, rise: true, left: true, fade: true, noglass: 
       const tick = () => {
         if (!glass.on) return;
         const haze = document.querySelector('.dtb-haze');
-        if (haze && getComputedStyle(haze).display !== 'none') for (let e = haze.parentElement; e; e = e.parentElement) { const f = getComputedStyle(e).filter; if (f && f !== 'none') glass.bad.add(String(e.className || e.tagName).split(' ')[0]); }
+        if (haze && getComputedStyle(haze).display !== 'none') for (let e = haze.parentElement; e; e = e.parentElement) {
+          const cs = getComputedStyle(e), who = String(e.className || e.tagName).split(' ')[0];
+          if (cs.filter && cs.filter !== 'none') glass.bad.add(who + ': filter');
+          if (+cs.opacity < 0.999) glass.bad.add(who + ': opacity below 1');
+          for (const a of e.getAnimations()) {
+            const keys = new Set(); for (const k of a.effect.getKeyframes()) for (const n in k) keys.add(n);
+            if (keys.has('opacity')) glass.bad.add(who + ': opacity animation');
+            if (keys.has('filter')) glass.bad.add(who + ': filter animation');
+          }
+        }
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
     });
+    // where the row is and how present its parts are (--chrome-o: 1 .. 0, the 'fade' way dims them through it)
     const at = () => page.evaluate(() => {
       const c = document.querySelector('.chrome'), r = c.getBoundingClientRect(), haze = document.querySelector('.dtb-haze');
-      let o = 1; for (let e = c; e; e = e.parentElement) o *= +getComputedStyle(e).opacity;
+      const o = +getComputedStyle(c).getPropertyValue('--chrome-o') || 0;
       const on = r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth && o > 0.02;
-      return (on ? `on screen (top ${Math.round(r.top)}, opacity ${o.toFixed(2)})` : 'gone') + (getComputedStyle(haze).display === 'none' ? ', blur off' : '') + (c.closest('.under') ? ' [in the blurred layer]' : '');
+      return (on ? `on screen (top ${Math.round(r.top)}, parts ${o.toFixed(2)})` : o > 0.02 ? 'off screen' : 'dimmed out in place') + (getComputedStyle(haze).display === 'none' ? ', blur off' : '') + (c.closest('.under') ? ' [in the layer that fades]' : '');
     });
     await page.locator('.tabview.on [aria-label^="播放 "]').first().tap(); await sleep(1300);
     const up = await at();
@@ -49,10 +61,12 @@ const EXPECT_CLEAN = { sink: true, rise: true, left: true, fade: true, noglass: 
     const gone = await at();
     const tabs = await page.evaluate(() => { const b = document.querySelector('.dtb').getBoundingClientRect(); return [Math.round(b.top), Math.round(b.bottom)]; });
     const bad = await page.evaluate(() => { glass.on = false; return [...glass.bad]; });
-    const back = tabs[0] === 774 && /on screen/.test(gone) && /opacity 1\.00/.test(gone) && !/blur off/.test(gone);
-    const ok = back && (bad.length === 0) === EXPECT_CLEAN[mode] && !errs.length;
+    const back = tabs[0] === 774 && /on screen/.test(gone) && /parts 1\.00/.test(gone) && !/blur off/.test(gone);
+    // while the player is up, the ways that leave must have the row out of sight
+    const away = { sink: /off screen/, rise: /off screen/, left: /off screen/, fade: /dimmed out/, noglass: /blur off/, asis: /on screen/ }[mode].test(up);
+    const ok = back && away && (bad.length === 0) === EXPECT_CLEAN[mode] && !errs.length;
     if (!ok) failed++;
-    console.log(`${ok ? 'ok  ' : 'FAIL'} [${driver}] ${mode.padEnd(8)} up: ${up} | halfway down: ${half} | after: ${back ? 'back in place' : gone + ' ' + tabs} | blur inside a filter: ${bad.length ? 'yes (' + bad.join(',') + ')' : 'never'}${errs.length ? ' | ' + errs[0] : ''}`);
+    console.log(`${ok ? 'ok  ' : 'FAIL'} [${driver}] ${mode.padEnd(8)} up: ${up} | halfway down: ${half} | after: ${back ? 'back in place' : gone + ' ' + tabs} | glass inside something that switches it off: ${bad.length ? 'yes (' + bad.join(', ') + ')' : 'never'}${errs.length ? ' | ' + errs[0] : ''}`);
     await ctx.close();
   }
   console.log(failed ? `${failed} failed` : 'all as expected (asis is the control and is meant to break the rule)');

@@ -32,6 +32,7 @@ export default function App() {
   const message = useStore((s) => s.toast);
   const stacks = React.useRef([]);
   const under = React.useRef(null);
+  const veil = React.useRef(null);
   const pending = React.useRef(null);           // a page to open once the player has gone
 
   React.useLayoutEffect(() => { document.getElementById('app').classList.toggle('has-bar', bar); }, [bar]);
@@ -84,8 +85,10 @@ export default function App() {
         </main>
         {stays ? chromeEl : null}
       </div>
+      {/* the glass that puts the pages out of focus behind the player (ui/PlayerSheet) */}
+      <div className="sheet-veil" ref={veil} />
       {stays ? null : chromeEl}
-      <PlayerSheet open={player} under={under} aside={chrome} asideMode={mode} onClosed={onPlayerClosed}>
+      <PlayerSheet open={player} under={under} veil={veil} aside={chrome} asideMode={mode} onClosed={onPlayerClosed}>
         <Player onNavigate={fromPlayer} />
       </PlayerSheet>
       <div id="toast" className={'glass' + (message ? ' on' : '')} role="status">{message || ''}</div>

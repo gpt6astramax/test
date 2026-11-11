@@ -1,63 +1,91 @@
 // The player. Unlike every other page it comes up from below, over whatever is on screen, and goes away with a swipe
 // down. Once up it is a page like any other: it fills the screen to the top, square-cornered, and like any other
 // page it has no ground of its own. At its top, in the middle, is a short dark line bent into a shallow arrow that
-// points down: the hint that it goes away downwards. Pulled, the line straightens; tapped, it puts the player away. It is only its content; what was on
-// screen before stays behind it, smaller, lower, out of focus and faint, exactly as a page does behind the next one. It is a vertical ScrollGesture (sides [1]): with the 'scroll' driver dragging it is native
-// scrolling, so it follows the finger and snaps like a system sheet. It comes in with enter(), an animation and not
-// a gesture. What lies under it drops back out of focus, tied to the sheet's own scroll timeline.
+// points down: the hint that it goes away downwards. Pulled, the line straightens; tapped, it puts the player away.
+// It is only its content; what was on screen before stays behind it, smaller, lower, out of focus and faint, exactly
+// as a page does behind the next one.
 //
-// The floating chrome (the tab row) has a blur of its own, and in Safari a backdrop blur inside a filtered ancestor
-// sees nothing behind it and shows as clear glass. What the chrome does while the player is up is therefore a choice
-// (asideMode, lib/chrome-mode.js): it is outside what goes out of focus and leaves the screen one way or another, or
-// it stays inside and its own blur is switched off meanwhile.
+// It is a vertical ScrollGesture (sides [1]): with the 'scroll' driver dragging it is native scrolling, so it follows
+// the finger and snaps like a system sheet. It comes in with enter(), an animation and not a gesture.
 //
-// As in the page stack, nothing is changed on what lies under the sheet at the moment a transition ends: the tie to
-// the sheet is made once, the entrance is one animation laid over it, and after the sheet has gone it stays where it
-// is (off screen, taking no touches) until things are quiet. Only then is it unmounted and the tie taken off.
+// Three things follow the sheet, each in the way that keeps it on the compositor and keeps glass working:
+//   - what lies under it: transform and opacity. Its blur is either a veil laid over it (glass of fixed radius whose
+//     strength is the opacity() of its backdrop-filter) or, in the 'filter' depth mode, its own filter: blur()
+//     (lib/depth-mode.js says why the first is the default in Chromium);
+//   - the floating chrome (the tab row): it leaves the screen by a transform, never by opacity. Glass stops blurring
+//     as soon as anything it sits in has an opacity below 1, an opacity animation (even one that stays at 1) or a
+//     filter. The 'fade' way dims the row's own parts instead, the glass through opacity() in its backdrop-filter;
+//   - the handle's two halves: a rotation.
+//
+// As in the page stack: what follows the sheet is moved by the entrance's own animations while it comes up and tied
+// to the sheet's timeline once it is up (nobody is scrolling what lies under it then); and after the sheet has gone
+// it stays where it is (off screen, taking no touches) until things are quiet. Only then is it unmounted and the ties
+// taken off, so nothing changes under a finger that is by then scrolling the page again.
 import * as React from 'react';
 import '../lib/scroll-gesture.js';
 import { whenQuiet } from '../lib/quiet';
 import { getDriver } from '../lib/driver';
-import { BACK } from '../lib/depth-stack';
+import { getDepthMode } from '../lib/depth-mode';
+import { BACK, veilAt, veilKeyframes } from '../lib/depth-stack';
 import { reduced, supportsTimeline, tapSwitch } from './platform';
 
 const ScrollGesture = window.ScrollGesture;
 const OVER = 0.1;                  // the commit point lies this far below the screen's edge
 const MS = 620, EASE = 'cubic-bezier(.2,.86,.24,1)';
-// Where the chrome is while the player is up, for the ways in which it leaves. x in % of its own width, y in px
-// ('h': one screen up, so it rides on the sheet's top edge at the sheet's own speed), s scale, o opacity.
-// ret: it starts to return once the sheet has been pulled this far down. ms: how long it takes to leave, as a share
-// of the sheet's entrance.
-const AWAY = {
-  sink: { y: 120, o: 0, ret: 0.35, ms: 0.55 },
-  rise: { y: 'h', o: 1, ret: 0, ms: 1 },
-  left: { x: -110, o: 0, ret: 0.35, ms: 0.55 },
-  fade: { s: 0.94, o: 0, ret: 0.35, ms: 0.45 },
-};
-// the chrome `a` of the way away (0..1), on a screen h px high
-const awayAt = (m, a, h) => `translate(${((m.x || 0) * a).toFixed(2)}%, ${((m.y === 'h' ? -h : m.y || 0) * a).toFixed(1)}px) scale(${(1 - (1 - (m.s || 1)) * a).toFixed(4)})`;
-const awayCSS = (m) => `translate(${m.x || 0}%, ${m.y === 'h' ? 'calc(var(--sh-h) * -1)' : (m.y || 0) + 'px'}) scale(${m.s || 1})`;
 const BEND = 16;                   // degrees each half of the handle is turned to make the arrow
 const STRAIGHT = '94%';            // timeline point (100% = at rest) from which the handle is a straight line
-const FRONT_FRAME = { transform: 'none', filter: 'none', opacity: 1 };            // in focus: no filter at all
-const BACK_FRAME = { transform: `translateY(${BACK.y}%) scale(${BACK.s})`, filter: `blur(${BACK.blur}px)`, opacity: BACK.o };
+const BACK_T = `translateY(${BACK.y}%) scale(${BACK.s})`;
+const glass = (o) => `blur(${BACK.blur}px) opacity(${o})`;
+const glassFrame = (o) => ({ backdropFilter: glass(o), webkitBackdropFilter: glass(o) });
+// what lies under, in focus and behind; blur: its own filter carries the blur (depth mode 'filter')
+const underFrames = (blur) => [
+  blur ? { transform: 'none', filter: 'none', opacity: 1 } : { transform: 'none', opacity: 1 },
+  blur ? { transform: BACK_T, filter: `blur(${BACK.blur}px)`, opacity: BACK.o } : { transform: BACK_T, opacity: BACK.o },
+];
+
+// The ways the chrome leaves. `ret`: it starts to return once the sheet has been pulled this far down. `ms`: how
+// long leaving takes, as a share of the sheet's entrance. What it moves by is measured when the sheet opens.
+const AWAY = {
+  sink: { ret: 0.35, ms: 0.55 },   // down, out of the screen
+  rise: { ret: 0, ms: 1 },         // up by one screen: it rides on the sheet's top edge, at the sheet's speed
+  left: { ret: 0.35, ms: 0.55 },   // out to the left
+  fade: { ret: 0.35, ms: 0.45 },   // in place: its parts dim, its glass thins (never the opacity of the row itself)
+};
 
 let styled = false;
 function styles() {
   if (styled) return;
   styled = true;
   const hold = (100 * OVER / (1 + OVER)).toFixed(2) + '%';
+  const late = (ret) => (100 * (1 - ret / (1 + OVER))).toFixed(2) + '%';
+  // "At rest" is held from 99% on: at rest the sheet's timeline is one pixel short of its end (the gesture keeps it
+  // there, so that these animations can run on the compositor), and everything must show exactly its resting state.
+  const rest = '99%,100%';
+  // --chrome-o: how present the chrome's parts are (1 .. 0). A registered number (styles.css registers it with
+  // @property; this is for a browser that only has the script way), so it can be animated.
+  if (typeof CSS !== 'undefined' && CSS.registerProperty) {
+    try { CSS.registerProperty({ name: '--chrome-o', syntax: '<number>', inherits: true, initialValue: '1' }); } catch (e) { /* registered already */ }
+  }
   const st = document.createElement('style');
   st.setAttribute('data-player-sheet', '');
   st.textContent =
-    `.app{--sh-t:translateY(${BACK.y}%) scale(${BACK.s});--sh-blur:${BACK.blur}px;--sh-o:${BACK.o}}` +
-    `@keyframes sh-f{0%,${hold}{transform:none;filter:none;opacity:1}100%{transform:var(--sh-t);filter:blur(var(--sh-blur));opacity:var(--sh-o)}}` +
-    Object.keys(AWAY).map((k) => `@keyframes sh-c-${k}{0%,${hold}{transform:none;opacity:1}${(100 * (1 - AWAY[k].ret / (1 + OVER))).toFixed(2)}%,100%{transform:${awayCSS(AWAY[k])};opacity:${AWAY[k].o}}}`).join('') +
+    `.app{--sh-t:${BACK_T};--sh-blur:${BACK.blur}px;--sh-o:${BACK.o}}` +
+    // what lies under: with its own blur (depth mode 'filter'), and without (transform and opacity only)
+    `@keyframes sh-f{0%,${hold}{transform:none;filter:none;opacity:1}${rest}{transform:var(--sh-t);filter:blur(var(--sh-blur));opacity:var(--sh-o)}}` +
+    `@keyframes sh-g{0%,${hold}{transform:none;opacity:1}${rest}{transform:var(--sh-t);opacity:var(--sh-o)}}` +
+    `.under.sh-back{transform:var(--sh-t);opacity:var(--sh-o)}.under.sh-back.sh-bf{filter:blur(var(--sh-blur))}` +
+    // the veil over it
+    veilKeyframes('sh-v', OVER) +
+    // the chrome: by a transform (--sh-x / --sh-y are measured when the sheet opens), or by dimming its parts
+    `@keyframes sh-c-sink{0%,${hold}{transform:none}${late(AWAY.sink.ret)},100%{transform:translate(var(--sh-x,0px),var(--sh-y,0px))}}` +
+    `@keyframes sh-c-left{0%,${hold}{transform:none}${late(AWAY.left.ret)},100%{transform:translate(var(--sh-x,0px),var(--sh-y,0px))}}` +
+    `@keyframes sh-c-rise{0%,${hold}{transform:none}${rest}{transform:translate(var(--sh-x,0px),var(--sh-y,0px))}}` +
+    `@keyframes sh-c-fade{0%,${hold}{--chrome-o:1}${late(AWAY.fade.ret)},100%{--chrome-o:0}}` +
     // the chrome stays, its own blur is off
     `.sh-noglass .dtb-haze{display:none}` +
     // the handle's two halves: straight once the sheet has been pulled a little, bent into the arrow at rest
-    `@keyframes sh-hl{0%,${STRAIGHT}{transform:none}100%{transform:rotate(${BEND}deg)}}` +
-    `@keyframes sh-hr{0%,${STRAIGHT}{transform:none}100%{transform:rotate(-${BEND}deg)}}`;
+    `@keyframes sh-hl{0%,${STRAIGHT}{transform:none}${rest}{transform:rotate(${BEND}deg)}}` +
+    `@keyframes sh-hr{0%,${STRAIGHT}{transform:none}${rest}{transform:rotate(-${BEND}deg)}}`;
   document.head.appendChild(st);
 }
 
@@ -65,11 +93,12 @@ function styles() {
  * open      whether the player should be showing
  * onClosed  called as soon as it has gone (swiped down, or closed from outside and done sliding)
  * under     ref to the element that lies under the sheet and recedes
+ * veil      ref to an element that covers `under` and nothing else: the glass that puts it out of focus
  * aside     ref to the floating chrome
  * asideMode what it does while the player is up: 'sink' | 'rise' | 'left' | 'fade' (it is outside `under` and leaves),
  *           'noglass' (inside `under`, its own blur off meanwhile), 'asis' (inside `under`, left alone)
  */
-export function PlayerSheet({ open, onClosed, under, aside, asideMode = 'sink', children }) {
+export function PlayerSheet({ open, onClosed, under, veil, aside, asideMode = 'sink', children }) {
   const [state, setState] = React.useState({ mounted: open, gen: 0 });
   const tidy = React.useRef(null);
   const latest = React.useRef(onClosed);
@@ -85,10 +114,10 @@ export function PlayerSheet({ open, onClosed, under, aside, asideMode = 'sink', 
     if (latest.current) latest.current();
     tidy.current = whenQuiet(() => { tidy.current = null; setState((s) => ({ ...s, mounted: false })); });
   };
-  return <Surface key={state.gen} open={open} under={under} aside={aside} asideMode={asideMode} onGone={onGone}>{children}</Surface>;
+  return <Surface key={state.gen} open={open} under={under} veil={veil} aside={aside} asideMode={asideMode} onGone={onGone}>{children}</Surface>;
 }
 
-function Surface({ open, onGone, under, aside, asideMode, children }) {
+function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
   styles();
   const el = React.useRef(null);
   const body = React.useRef(null);
@@ -103,79 +132,105 @@ function Surface({ open, onGone, under, aside, asideMode, children }) {
     const gesture = ScrollGesture(el.current, { driver: getDriver(), axis: 'y', sides: [1], cssVar: null, body: body.current, overshoot: OVER });
     g.current = gesture;
     const tied = supportsTimeline && !!gesture.timeline;
+    const tie = (node, name) => { node.style.animation = name + ' linear both'; node.style.animationTimeline = gesture.timeline; };
+    const depth = getDepthMode();
+    const blur = depth === 'filter';                          // what lies under carries the blur itself
+    const v = depth === 'veil' && veil ? veil.current : null; // or a veil over it does
     const chrome = aside && aside.current;
     const away = AWAY[asideMode];                             // set when the chrome leaves; then `a` is the chrome
     const a = away ? chrome : null;
-    const screen = el.current.clientHeight;
-    let clock = null, clockA = null;
-    const dropClocks = () => { if (clock) { clock.cancel(); clock = null; } if (clockA) { clockA.cancel(); clockA = null; } };
+    // While the sheet is coming up, nothing is tied to its timeline: what follows it is moved by animations on the
+    // entrance's clock that hold their end, and tied once the entrance is over. (Chromium can run a scroll-driven
+    // animation on the compositor only if it could start it there, and it cannot under another animation of the
+    // same properties; having failed once it does not try again.)
+    const clocks = [];
+    const ties = [];                                          // [node, keyframes name]
+    let entering = true;
+    const entered = () => {
+      if (!entering) return;
+      entering = false;
+      if (tied) ties.forEach(([node, name]) => tie(node, name));
+      clocks.splice(0).forEach((c) => c.cancel());
+    };
+
+    // ---- the chrome: where it goes is measured now, in px (a transform is all that may touch it)
+    let ax = 0, ay = 0;
+    const chromeAt = (f) => {                                 // f: how far away, 0 .. 1
+      if (asideMode === 'fade') a.style.setProperty('--chrome-o', String(1 - f));
+      else a.style.transform = f ? `translate(${(ax * f).toFixed(1)}px, ${(ay * f).toFixed(1)}px)` : 'none';
+    };
     if (a) {
+      const r = a.getBoundingClientRect(), frame = el.current.getBoundingClientRect();
+      if (asideMode === 'sink') ay = frame.bottom - r.top + 16;
+      if (asideMode === 'rise') ay = -frame.height;
+      if (asideMode === 'left') ax = -(r.right - frame.left + 16);
       a.inert = true;
-      a.style.setProperty('--sh-h', screen + 'px');
-      if (tied) { a.style.animation = `sh-c-${asideMode} linear both`; a.style.animationTimeline = gesture.timeline; }
-      else { a.style.transform = awayAt(away, 1, screen); a.style.opacity = String(away.o); }
+      a.style.setProperty('--sh-x', ax + 'px'); a.style.setProperty('--sh-y', ay + 'px');
+      chromeAt(1);                                            // where it is while the player is up; a tie overrides this
+      ties.push([a, 'sh-c-' + asideMode]);
     }
+    // (taken off again only with the ties below: until then what the chrome sits in still has an opacity animation)
     if (chrome && asideMode === 'noglass') chrome.classList.add('sh-noglass');
-    // What lies under is tied to the sheet from the start: it comes back into focus as the sheet is pulled down.
+
+    // ---- what lies under is tied to the sheet from the start: it comes back into focus as the sheet is pulled down
     if (u) {
-      u.classList.add('sh-back');
+      u.classList.add('sh-back'); u.classList.toggle('sh-bf', blur);
       u.inert = true;
-      if (tied) { u.style.animation = 'sh-f linear both'; u.style.animationTimeline = gesture.timeline; }
+      ties.push([u, blur ? 'sh-f' : 'sh-g']);
     }
-    // The handle follows the sheet: by its scroll timeline, or else by a class set when the state changes.
+    const veilTo = (o) => { v.style.webkitBackdropFilter = glass(o); v.style.backdropFilter = glass(o); };
+    if (v) { v.style.visibility = 'visible'; veilTo(1); ties.push([v, 'sh-v']); }
+
+    // ---- the handle follows the sheet: by its scroll timeline, or else by a class set when the state changes
     const halves = handle.current.querySelectorAll('i');
-    if (tied) halves.forEach((h, i) => { h.style.animation = (i ? 'sh-hr' : 'sh-hl') + ' linear both'; h.style.animationTimeline = gesture.timeline; });
+    if (tied) halves.forEach((h, i) => tie(h, i ? 'sh-hr' : 'sh-hl'));
     let flat = false;
+
     const gone = () => {
       if (left.current) return;
       left.current = true;
       if (u) u.inert = false;
       if (a) a.inert = false;
-      if (chrome) chrome.classList.remove('sh-noglass');     // what it sits in carries no filter any more
       el.current.inert = true;
       latest.current();
     };
     const offChange = gesture.on('change', (p) => {
       if (!tied && flat !== p > 0.03) { flat = p > 0.03; handle.current.classList.toggle('flat', flat); }
-      if ((clock || clockA) && p > 0.02) dropClocks();               // the finger took the sheet while it was coming up
+      if (entering && p > 0.02) entered();                   // the finger took the sheet while it was coming up
       if (gesture.passing) { if (u && u.inert) u.inert = false; if (a && a.inert) a.inert = false; }
-      if (tied || clock || clockA) return;
+      if (tied || entering) return;
       const k = Math.min(1, (1 + OVER) * Math.max(0, p)), L = (from, to) => from + (to - from) * k;
       if (u) {
         u.style.transform = `translateY(${L(BACK.y, 0)}%) scale(${L(BACK.s, 1)})`;
-        u.style.filter = L(BACK.blur, 0) > 0.05 ? `blur(${L(BACK.blur, 0)}px)` : 'none';
+        if (blur) u.style.filter = L(BACK.blur, 0) > 0.05 ? `blur(${L(BACK.blur, 0)}px)` : 'none';
         u.style.opacity = String(L(BACK.o, 1));
       }
-      if (a) {
-        const v = Math.max(0, Math.min(1, (k - away.ret) / (1 - away.ret)));  // how far the chrome is back
-        a.style.transform = awayAt(away, 1 - v, screen);
-        a.style.opacity = String(away.o + (1 - away.o) * v);
-      }
+      if (v) veilTo(veilAt(k));
+      if (a) chromeAt(1 - Math.max(0, Math.min(1, (k - away.ret) / (1 - away.ret))));
     });
     const offSettle = gesture.on('settle', (side) => { if (side === 1) gone(); });
-    if (!reduced()) {
-      // it recedes on the entrance's clock, by an animation laid over the tie; it runs out by itself
-      if (u) { clock = u.animate([FRONT_FRAME, BACK_FRAME], { duration: MS, easing: EASE }); clock.onfinish = () => { clock = null; }; }
-      if (a) { clockA = a.animate([{ transform: 'none', opacity: 1 }, { transform: awayAt(away, 1, screen), opacity: away.o }], { duration: MS * away.ms, easing: EASE }); clockA.onfinish = () => { clockA = null; }; }
-      gesture.enter(1, { duration: MS, easing: EASE, travel: 1 / (1 + OVER) });
+    if (reduced()) entered();
+    else {
+      // they recede on the entrance's clock and hold their end until the ties take over
+      const run = (node, frames, ms) => clocks.push(node.animate(frames, { duration: ms, easing: EASE, fill: 'forwards' }));
+      if (u) run(u, underFrames(blur), MS);
+      if (v) run(v, [glassFrame(0), glassFrame(1)], MS);
+      if (a) run(a, asideMode === 'fade' ? [{ '--chrome-o': 1 }, { '--chrome-o': 0 }] : [{ transform: 'none' }, { transform: `translate(${ax}px, ${ay}px)` }], MS * away.ms);
+      gesture.enter(1, { duration: MS, easing: EASE, travel: 1 / (1 + OVER) }).then(entered);
     }
     const onKey = (e) => { if (e.key === 'Escape' && !left.current) gesture.go(1); };
     document.addEventListener('keydown', onKey);
     return () => {
       offChange(); offSettle();
       document.removeEventListener('keydown', onKey);
-      dropClocks();
+      entering = false;
+      clocks.splice(0).forEach((c) => c.cancel());
       gesture.destroy();
       g.current = null;
-      if (u) {
-        ['animation', 'animation-timeline', 'transform', 'filter', 'opacity'].forEach((k) => u.style.removeProperty(k));
-        u.classList.remove('sh-back');
-        u.inert = false;
-      }
-      if (a) {
-        ['animation', 'animation-timeline', 'transform', 'opacity', '--sh-h'].forEach((k) => a.style.removeProperty(k));
-        a.inert = false;
-      }
+      const untie = (node, props) => props.forEach((k) => node.style.removeProperty(k));
+      if (u) { untie(u, ['animation', 'animation-timeline', 'transform', 'filter', 'opacity']); u.classList.remove('sh-back', 'sh-bf'); u.inert = false; }
+      if (v) untie(v, ['animation', 'animation-timeline', 'visibility', '-webkit-backdrop-filter', 'backdrop-filter']);
+      if (a) { untie(a, ['animation', 'animation-timeline', 'transform', '--chrome-o', '--sh-x', '--sh-y']); a.inert = false; }
       if (chrome) chrome.classList.remove('sh-noglass');
     };
   }, []);                                                        // eslint-disable-line react-hooks/exhaustive-deps
@@ -183,8 +238,12 @@ function Surface({ open, onGone, under, aside, asideMode, children }) {
   // closed from outside: slide down first; it is unmounted later, like after a swipe
   React.useEffect(() => {
     if (open || !g.current || left.current) return;
-    if (reduced()) { left.current = true; if (under && under.current) under.current.inert = false; if (aside && aside.current) { aside.current.inert = false; aside.current.classList.remove('sh-noglass'); } latest.current(); }
-    else g.current.go(1);
+    if (reduced()) {
+      left.current = true;
+      if (under && under.current) under.current.inert = false;
+      if (aside && aside.current) aside.current.inert = false;
+      latest.current();
+    } else g.current.go(1);
   }, [open]);                                                    // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = () => { if (g.current && !left.current) g.current.go(1); };

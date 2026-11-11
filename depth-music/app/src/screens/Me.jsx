@@ -7,6 +7,7 @@ import { TRACKS, ARTISTS } from '../data';
 import { Tap } from '../ui/Tap';
 import { useStore, set, setChromeMode } from '../state';
 import { CHROME_MODES } from '../lib/chrome-mode';
+import { DEPTH_MODES, getDepthSetting, saveDepthSetting, getDepthMode } from '../lib/depth-mode';
 import { getDriver, setDriver } from '../lib/driver';
 
 const WEB = Platform.OS === 'web';
@@ -68,6 +69,7 @@ export default function Me() {
         <Fine>{WEB ? `版本 ${BUILD} · React Native（react-native-web）` : `React Native · ${Platform.OS === 'ios' ? 'iOS' : 'Android'}（Expo）`}</Fine>
       </Section>
 
+      {WEB ? <DepthSection /> : null}
       {WEB ? <ChromeSection /> : null}
       {WEB ? <GestureSection /> : null}
       {WEB ? <FitSection /> : null}
@@ -75,25 +77,44 @@ export default function Me() {
   );
 }
 
+// One choice out of several, each with a line of explanation: [{ key, title, note }].
+function Picks({ items, value, onPick }) {
+  const S = useS();
+  return (
+    <View>
+      {items.map((m, i) => (
+        <Tap key={m.key} role="radio" aria-checked={m.key === value} label={m.title} onPress={() => onPick(m.key)}
+          style={[S.pick, i === items.length - 1 && { borderBottomWidth: 0 }]}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={S.pickTitle}>{m.title}</Text>
+            <Text style={S.pickNote}>{m.note}</Text>
+          </View>
+          <View style={[S.ring, m.key === value && S.ringOn]}>{m.key === value ? <View style={S.ringDot} /> : null}</View>
+        </Tap>
+      ))}
+    </View>
+  );
+}
+
+// Web only: how the page behind goes out of focus (lib/depth-mode.js). Several ways, to compare on a device.
+function DepthSection() {
+  const [mode, setMode] = React.useState(getDepthSetting);
+  const inEffect = (DEPTH_MODES.find((m) => m.key === getDepthMode()) || {}).title;
+  return (
+    <Section title="后面那页怎么变虚">
+      <Picks items={DEPTH_MODES} value={mode} onPick={(k) => { saveDepthSetting(k); setMode(k); }} />
+      <Fine>对之后打开的页面和播放器生效。{mode === 'auto' ? `这个浏览器里“自动”用的是：${inEffect}。` : ''}</Fine>
+    </Section>
+  );
+}
+
 // Web only: what the tab row does while the player is up. Several ways, to compare on a device.
 function ChromeSection() {
-  const S = useS();
   const mode = useStore((s) => s.chromeMode);
   return (
     <Section title="播放器升起时的底栏">
-      <View>
-        {CHROME_MODES.map((m, i) => (
-          <Tap key={m.key} role="radio" aria-checked={m.key === mode} label={m.title} onPress={() => setChromeMode(m.key)}
-            style={[S.pick, i === CHROME_MODES.length - 1 && { borderBottomWidth: 0 }]}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={S.pickTitle}>{m.title}</Text>
-              <Text style={S.pickNote}>{m.note}</Text>
-            </View>
-            <View style={[S.ring, m.key === mode && S.ringOn]}>{m.key === mode ? <View style={S.ringDot} /> : null}</View>
-          </Tap>
-        ))}
-      </View>
-      <Fine>下次打开播放器时生效。前四种把底栏放在被虚化的那一层外面，后两种留在里面。</Fine>
+      <Picks items={CHROME_MODES} value={mode} onPick={setChromeMode} />
+      <Fine>下次打开播放器时生效。前四种把底栏放在后面那一层的外面，只用位移离开（“原地淡出”用毛玻璃自己的 opacity()）；后两种留在里面。</Fine>
     </Section>
   );
 }

@@ -15,6 +15,10 @@
 //   is pulled into a flat ellipse; moving, it stretches along its path the faster it goes.
 // - Self-contained: it brings its own CSS. Colours come from CSS variables with fallbacks, so it follows a theme:
 //     --dtb-fg (current icon and dot, default var(--fg) or #111), --dtb-muted (other icons), --dtb-blur (default 18px)
+// - Glass and opacity do not mix: the blur stops working as soon as the row, or anything it sits in, has an opacity
+//   below 1, an opacity animation (even one that stays at 1) or a filter. So: move the row with transforms only. To
+//   fade it, set --dtb-o (1 .. 0) on it or on an ancestor: the icons and the dot dim, and the glass thins through
+//   opacity() inside its backdrop-filter.
 // - Put it in a positioned container at the bottom of the screen. Props: height (default 52), haze (default true),
 //   feather (default false; with it, leave ~26 px below the row so the blur can clear before the screen's edge),
 //   style, className.
@@ -24,17 +28,17 @@ import { tapSwitch } from './platform';
 
 const CSS = `
 .dtb{position:relative;display:flex;touch-action:none;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
-.dtb-item{position:relative;flex:1;display:grid;place-items:center;pointer-events:none;color:var(--dtb-muted,var(--fg3,rgb(17 18 20/.36)));transition:color .2s}
+.dtb-item{position:relative;flex:1;display:grid;place-items:center;pointer-events:none;color:var(--dtb-muted,var(--fg3,rgb(17 18 20/.36)));opacity:var(--dtb-o,1);transition:color .2s}
 .dtb-item[data-on]{color:var(--dtb-fg,var(--fg,#111214))}
 .dtb-item:focus-visible{outline:2px solid currentColor;outline-offset:-6px;border-radius:12px}
-.dtb-ink{position:absolute;left:0;bottom:-3px;height:6px;pointer-events:none;will-change:transform}
+.dtb-ink{position:absolute;left:0;bottom:-3px;height:6px;pointer-events:none;will-change:transform;opacity:var(--dtb-o,1)}
 .dtb-ink::after{content:"";position:absolute;left:50%;top:0;width:6px;height:6px;margin-left:-3px;border-radius:50%;
   background:var(--dtb-fg,var(--fg,#111214));transform:scale(var(--sx,1),var(--sy,1))}
 .dtb-switch{position:absolute;left:0;top:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
 /* the haze: only blur, the row's own box with round ends. It keeps a layer of its own (translateZ), so that layers
    coming and going behind it do not have it rebuilt, which on iOS shows as the blur dropping out for a frame. */
 .dtb-haze{position:absolute;z-index:-1;inset:0;border-radius:999px;pointer-events:none;transform:translateZ(0);
-  -webkit-backdrop-filter:blur(var(--dtb-blur,18px));backdrop-filter:blur(var(--dtb-blur,18px))}
+  -webkit-backdrop-filter:blur(var(--dtb-blur,18px)) opacity(var(--dtb-o,1));backdrop-filter:blur(var(--dtb-blur,18px)) opacity(var(--dtb-o,1))}
 /* feathered: a slim capsule centred on the icons is fully blurred; from there it clears in every direction (two half
    discs for the ends, a band between them) */
 .dtb-haze.dtb-feather{inset:auto;left:-16px;right:-16px;top:50%;height:100px;margin-top:-50px;border-radius:0;

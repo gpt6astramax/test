@@ -73,7 +73,15 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 /* Everything a transition moves keeps a layer of its own for good (will-change: transform). A layer that comes and
    goes with each transition is a change under the finger at the very moment the transition ends; see lib/quiet.js. */
 .under { transform-origin: 50% 40%; will-change: transform }
-.chrome { will-change: transform }
+/* The chrome may be moved, and nothing else: no opacity and no filter on it or on anything it sits in, not even an
+   opacity animation that stays at 1. Any of those and the glass inside it stops blurring. To dim it, --chrome-o dims
+   its parts (the tab row's icons and dot, and the strength of its glass through opacity() in the backdrop-filter).
+   --chrome-o is a registered number, 1 unless something sets it, so it can be animated and is never undefined. */
+@property --chrome-o { syntax: '<number>'; inherits: true; initial-value: 1 }
+.chrome { will-change: transform; --dtb-o: var(--chrome-o, 1) }
+.chrome .shell { background: color-mix(in srgb, var(--glass) calc(var(--chrome-o, 1) * 100%), transparent); border-color: color-mix(in srgb, var(--glass-edge) calc(var(--chrome-o, 1) * 100%), transparent);
+  -webkit-backdrop-filter: blur(26px) saturate(1.7) opacity(var(--chrome-o, 1)); backdrop-filter: blur(26px) saturate(1.7) opacity(var(--chrome-o, 1)) }
+.chrome .shell > * { opacity: var(--chrome-o, 1) }
 /* On a wide screen the column's edges fade to the ground, so a page coming in is not cut off by a straight line. Two
    strips of the ground's colour over the edges: a mask over the pages would have every frame of every page turn
    drawn into a surface of its own first. */
@@ -95,13 +103,11 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 .layer { position: absolute; inset: 0; transform-origin: 50% 42%; will-change: transform }
 .layer.root { display: flex; flex-direction: column }
 .lbody { display: flex; flex-direction: column; position: relative }
-.layer.b1 { transform: var(--back-t); filter: blur(var(--back-blur)); opacity: var(--back-o) }
-.layer.b2 { transform: var(--far-t); filter: blur(var(--far-blur)); opacity: 0 }
+/* (whether the layers behind also carry a blur of their own is the stack's affair: lib/depth-stack.js, class bf) */
+.layer.b1 { transform: var(--back-t); opacity: var(--back-o) }
+.layer.b2 { transform: var(--far-t); opacity: 0 }
 .layer.b3 { visibility: hidden }
-@keyframes ds-r1 { from { transform: none; filter: blur(0px); opacity: 1 } to { transform: var(--back-t); filter: blur(var(--back-blur)); opacity: var(--back-o) } }
-@keyframes ds-r2 { from { transform: var(--back-t); filter: blur(var(--back-blur)); opacity: var(--back-o) } to { transform: var(--far-t); filter: blur(var(--far-blur)); opacity: 0 } }
 @keyframes ds-in { from { opacity: 0; transform: translate3d(28px, 0, 0) } to { opacity: 1; transform: none } }
-@keyframes ds-fade { from { opacity: 0 } to { opacity: 1 } }
 /* the page slides in as a whole (ScrollGesture's enter()); on top of that its blocks arrive one after another */
 /* (fill backwards: once they have run they hold nothing, so the class can stay and nothing has to be undone) */
 .layer.entering .page-in > * { animation: ds-in calc(var(--push-ms) - 140ms) var(--push-ease) backwards }
@@ -112,7 +118,6 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 .layer.entering .page-in > *:nth-child(6) { animation-delay: 100ms }
 .layer.entering .page-in > *:nth-child(7) { animation-delay: 120ms }
 .layer.entering .page-in > *:nth-child(n+8) { animation-delay: 140ms }
-.layer.entering .nav { animation: ds-fade var(--push-ms) ease backwards }
 
 /* a page: content only, no ground of its own. It always scrolls, by a pixel if its content is short, and keeps its
    overscroll to itself: a page that cannot scroll would hand a drag on to the document. */
@@ -163,8 +168,9 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 .sheet-handle i:first-of-type { right: calc(50% - 2.5px); transform-origin: calc(100% - 2.5px) 50%; transform: rotate(16deg) }
 .sheet-handle i:last-of-type { left: calc(50% - 2.5px); transform-origin: 2.5px 50%; transform: rotate(-16deg) }
 .sheet-handle.flat i { transform: none }
-/* what lies under the sheet drops back out of focus, on the sheet's own scroll timeline */
-.under.sh-back { transform: var(--sh-t); filter: blur(var(--sh-blur)); opacity: var(--sh-o) }
+/* What lies under the sheet drops back, tied to the sheet (ui/PlayerSheet.web.jsx). Over it, and under the chrome,
+   lies the veil that puts it out of focus: glass that is only there while a player is. */
+.sheet-veil { position: absolute; inset: 0; z-index: 4; pointer-events: none; visibility: hidden }
 
 #toast { position: absolute; z-index: 30; left: 50%; bottom: calc(var(--sab, 0px) + var(--chrome) + 14px); transform: translate(-50%, 10px); padding: 9px 16px; border-radius: 999px;
   font-size: 13.5px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .25s, transform .35s var(--spring) }
