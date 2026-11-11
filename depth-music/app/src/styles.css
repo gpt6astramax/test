@@ -72,19 +72,30 @@ svg.ic.i-moon { display: var(--moon) }
    moves up by the top safe area and is 100vh + top safe area tall */
 html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * env(safe-area-inset-top, 0px)); height: calc(100vh + env(safe-area-inset-top, 0px)) }
 .under, .views, .tabview, .stack { position: absolute; inset: 0 }
-.under { transform-origin: 50% 40% }
-@media (min-width: 500px) { .views { -webkit-mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent) } }
-/* tabs cross-fade; the one you leave drops back out of focus */
-.tabview { opacity: 0; visibility: hidden; transform: scale(.96); filter: blur(12px);
-  transition: opacity .28s ease, transform .28s ease, filter .28s ease, visibility 0s .28s }
-.tabview.on { opacity: 1; visibility: visible; transform: none; filter: none; transition-delay: 0s }
+/* Everything a transition moves keeps a layer of its own for good (will-change: transform). A layer that comes and
+   goes with each transition is a change under the finger at the very moment the transition ends; see lib/quiet.js. */
+.under { transform-origin: 50% 40%; will-change: transform }
+/* On a wide screen the column's edges fade to the ground, so a page coming in is not cut off by a straight line. Two
+   strips of the ground's colour over the edges: a mask over the pages would have every frame of every page turn
+   drawn into a surface of its own first. */
+@media (min-width: 500px) {
+  .under::before, .under::after { content: ""; position: absolute; z-index: 4; top: 0; bottom: 0; width: 32px; pointer-events: none }
+  .under::before { left: 0; background: linear-gradient(90deg, var(--bg), transparent) }
+  .under::after { right: 0; background: linear-gradient(270deg, var(--bg), transparent) }
+}
+/* Tabs dissolve: the tab you leave fades out, shrinking and going out of focus, over the one you go to. The new tab
+   is simply there, with no transition of its own: it is the one a finger is about to scroll, and nothing about it
+   may change when the fade ends. */
+.tabview { visibility: hidden }
+.tabview.on { visibility: visible }
+.tabview.out { visibility: visible; z-index: 1; pointer-events: none; animation: tab-out .28s ease both }
+@keyframes tab-out { from { opacity: 1; transform: none; filter: blur(0px) } to { opacity: 0; transform: scale(.96); filter: blur(12px) } }
 
 /* ---- the depth stack (src/lib/depth-stack.js) ---- */
 .ds { overflow: hidden }
-.layer { position: absolute; inset: 0; transform-origin: 50% 42% }
+.layer { position: absolute; inset: 0; transform-origin: 50% 42%; will-change: transform }
 .layer.root { display: flex; flex-direction: column }
 .lbody { display: flex; flex-direction: column; position: relative }
-.layer.b1, .layer.b2 { will-change: transform, filter, opacity }
 .layer.b1 { transform: var(--back-t); filter: blur(var(--back-blur)); opacity: var(--back-o) }
 .layer.b2 { transform: var(--far-t); filter: blur(var(--far-blur)); opacity: 0 }
 .layer.b3 { visibility: hidden }
@@ -93,7 +104,8 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 @keyframes ds-in { from { opacity: 0; transform: translate3d(28px, 0, 0) } to { opacity: 1; transform: none } }
 @keyframes ds-fade { from { opacity: 0 } to { opacity: 1 } }
 /* the page slides in as a whole (ScrollGesture's enter()); on top of that its blocks arrive one after another */
-.layer.entering .page-in > * { animation: ds-in calc(var(--push-ms) - 140ms) var(--push-ease) both }
+/* (fill backwards: once they have run they hold nothing, so the class can stay and nothing has to be undone) */
+.layer.entering .page-in > * { animation: ds-in calc(var(--push-ms) - 140ms) var(--push-ease) backwards }
 .layer.entering .page-in > *:nth-child(2) { animation-delay: 20ms }
 .layer.entering .page-in > *:nth-child(3) { animation-delay: 40ms }
 .layer.entering .page-in > *:nth-child(4) { animation-delay: 60ms }
@@ -101,7 +113,7 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 .layer.entering .page-in > *:nth-child(6) { animation-delay: 100ms }
 .layer.entering .page-in > *:nth-child(7) { animation-delay: 120ms }
 .layer.entering .page-in > *:nth-child(n+8) { animation-delay: 140ms }
-.layer.entering .nav { animation: ds-fade var(--push-ms) ease both }
+.layer.entering .nav { animation: ds-fade var(--push-ms) ease backwards }
 
 /* a page: content only, no ground of its own. It always scrolls, by a pixel if its content is short, and keeps its
    overscroll to itself: a page that cannot scroll would hand a drag on to the document. */
@@ -117,7 +129,7 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
   -webkit-backdrop-filter: blur(26px) saturate(1.7); backdrop-filter: blur(26px) saturate(1.7) }
 
 /* ---- waveform: bars as a mask, played part in the accent ---- */
-.wave { display: block; --prog: 0; transition: --prog .25s linear; -webkit-mask: center / 100% 100% no-repeat; mask: center / 100% 100% no-repeat;
+.wave { display: block; --prog: 0; -webkit-mask: center / 100% 100% no-repeat; mask: center / 100% 100% no-repeat;
   background: linear-gradient(90deg, var(--wave-acc, var(--fg)) calc(var(--prog) * 100%), var(--wave-rest) calc(var(--prog) * 100%)) }
 
 /* ---- floating chrome: the play bar (optional) and the tab row (src/ui/DotTabBar) ---- */
@@ -132,25 +144,23 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
   opacity: clamp(0, max(var(--p), -1 * var(--p)) * 4 - .3, 1) }
 .player .sg-pad[data-side="-1"]::after { content: "下一首  ›"; left: 22px }
 .player .sg-pad[data-side="1"]::after { content: "‹  上一首"; right: 22px }
-.pl-prog { position: absolute; left: 20px; right: 20px; bottom: 0; height: 2px; border-radius: 2px; background: var(--wave-acc, var(--fg)); transform-origin: 0 50%; transform: scaleX(var(--prog)); transition: --prog .25s linear; --prog: 0; pointer-events: none }
+.pl-prog { position: absolute; left: 20px; right: 20px; bottom: 0; height: 2px; border-radius: 2px; background: var(--wave-acc, var(--fg)); transform-origin: 0 50%; transform: scaleX(var(--prog)); --prog: 0; pointer-events: none }
 
 /* ---- the player: comes up from below over everything and fills the screen like a page; goes away with a swipe down ---- */
 .sheet { position: absolute; inset: 0; z-index: 20 }
 .sheet > .sg-body { display: flex; flex-direction: column }
-.sheet-panel { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--sheet);
-  -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6) }
+.sheet-panel { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--bg) }
 /* the sheet's content scrolls on its own; at its top a pull down is handed on to the sheet, which is how it is dismissed */
 .sheet-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none }
 .sheet-scroll::-webkit-scrollbar { display: none }
 .sheet-in { display: flex; flex-direction: column; gap: 26px; padding: calc(var(--sat, 0px) + 66px) var(--gutter-r) calc(var(--sab, 0px) + 40px) var(--gutter-l) }
 /* what lies under the sheet drops back out of focus, on the sheet's own scroll timeline */
-.under.sh-back { transform: var(--sh-t); filter: blur(var(--sh-blur)); opacity: var(--sh-o) }
-@keyframes sh-r { from { transform: none; filter: blur(0px); opacity: 1 } to { transform: var(--sh-t); filter: blur(var(--sh-blur)); opacity: var(--sh-o) } }
+.under.sh-back { transform: var(--sh-t); opacity: var(--sh-o) }
 
 #toast { position: absolute; z-index: 30; left: 50%; bottom: calc(var(--sab, 0px) + var(--chrome) + 14px); transform: translate(-50%, 10px); padding: 9px 16px; border-radius: 999px;
   font-size: 13.5px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .25s, transform .35s var(--spring) }
 #toast.on { opacity: 1; transform: translate(-50%, 0) }
 
 @media (prefers-reduced-motion: reduce) {
-  .tabview { transition-duration: .01s }
+  .tabview.out { animation-duration: .01s }
 }

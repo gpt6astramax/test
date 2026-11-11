@@ -41,11 +41,25 @@ export const DepthStackView = React.forwardRef(function DepthStackView({ active,
   }), [screens]);
   React.useImperativeHandle(ref, () => nav, [nav]);
 
+  // The tab you leave fades out over the one you go to (styles.css, .tabview.out). The class is set before paint,
+  // so the old tab is never gone for a frame.
+  const [out, setOut] = React.useState(false);
+  const was = React.useRef(active);
+  React.useLayoutEffect(() => {
+    const leaving = was.current && !active;
+    was.current = active;
+    if (active) { setOut(false); return undefined; }
+    if (!leaving) return undefined;
+    setOut(true);
+    const t = setTimeout(() => setOut(false), 320);
+    return () => clearTimeout(t);
+  }, [active]);
+
   // a tab that is not showing takes no focus and is not read out
   React.useLayoutEffect(() => { if (section.current) section.current.inert = !active; }, [active]);
 
   return (
-    <section ref={section} className={'tabview' + (active ? ' on' : '')} aria-label={label}>
+    <section ref={section} className={'tabview' + (active ? ' on' : out ? ' out' : '')} aria-label={label}>
       {/* The stack lives in an element of its own, whose class React never writes: DepthStack puts its own classes on
           its host (the depth values hang on them), and React replaces the whole class attribute of an element whenever
           a className it renders changes, as the one above does on every tab switch. */}

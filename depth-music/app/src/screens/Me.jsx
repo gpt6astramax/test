@@ -5,6 +5,7 @@ import { Segmented } from '../ui/Segmented';
 import { themed } from '../ui/themed';
 import { TRACKS, ARTISTS } from '../data';
 import { useStore, set } from '../state';
+import { getDriver, setDriver } from '../lib/driver';
 
 const WEB = Platform.OS === 'web';
 const BUILD = typeof __BUILD__ === 'undefined' ? '' : __BUILD__;      // set by the web build only
@@ -65,8 +66,22 @@ export default function Me() {
         <Fine>{WEB ? `版本 ${BUILD} · React Native（react-native-web）` : `React Native · ${Platform.OS === 'ios' ? 'iOS' : 'Android'}（Expo）`}</Fine>
       </Section>
 
+      {WEB ? <GestureSection /> : null}
       {WEB ? <FitSection /> : null}
     </>
+  );
+}
+
+// Web only: which ScrollGesture driver the page turns and the player use.
+function GestureSection() {
+  const [d, setD] = React.useState(() => (getDriver() === 'js' ? 1 : 0));
+  return (
+    <Section title="手势方案">
+      <SetRow title="翻页和播放器的手势" note="对之后打开的页面生效" last>
+        <Segmented label="手势方案" items={['原生滚动', 'JS']} index={d} onChange={(i) => { setD(i); setDriver(i ? 'js' : 'scroll'); }} />
+      </SetRow>
+      <Fine>原生滚动：拖动就是浏览器自己的滚动和吸附，不占主线程。JS：触摸事件加弹簧，每一帧都由脚本算，可以在半路接住。</Fine>
+    </Section>
   );
 }
 

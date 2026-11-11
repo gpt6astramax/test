@@ -30,8 +30,9 @@ const CSS = `
   background:var(--dtb-fg,var(--fg,#111214));transform:scale(var(--sx,1),var(--sy,1))}
 .dtb-switch{position:absolute;left:0;top:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
 /* the haze: only blur. A slim capsule centred on the icons is fully blurred; from there it clears in every direction
-   (two half discs for the ends, a band between them). */
-.dtb-haze{position:absolute;z-index:-1;left:-16px;right:-16px;top:50%;height:100px;margin-top:-50px;pointer-events:none;
+   (two half discs for the ends, a band between them). It keeps a layer of its own (translateZ), so that layers coming
+   and going behind it do not have it rebuilt, which on iOS shows as the blur dropping out for a frame. */
+.dtb-haze{position:absolute;z-index:-1;left:-16px;right:-16px;top:50%;height:100px;margin-top:-50px;pointer-events:none;transform:translateZ(0);
   -webkit-backdrop-filter:blur(var(--dtb-blur,18px));backdrop-filter:blur(var(--dtb-blur,18px));
   --dtb-m:radial-gradient(circle 50px at 100% 50%,#000 22px,rgb(0 0 0/.45) 35px,transparent 50px) left center/50px 100% no-repeat,
           radial-gradient(circle 50px at 0 50%,#000 22px,rgb(0 0 0/.45) 35px,transparent 50px) right center/50px 100% no-repeat,

@@ -32,6 +32,15 @@ export default function App() {
   const pending = React.useRef(null);           // a page to open once the player has gone
 
   React.useLayoutEffect(() => { document.getElementById('app').classList.toggle('has-bar', bar); }, [bar]);
+  // A drag that starts on the floating chrome scrolls nothing, and must not be handed to the document either (it
+  // would take the whole screen with it). The play bar is a gesture of its own and keeps its drags.
+  const chrome = React.useRef(null);
+  React.useEffect(() => {
+    const el = chrome.current;
+    const stop = (e) => { if (e.cancelable && !(e.target.closest && e.target.closest('.sg'))) e.preventDefault(); };
+    el.addEventListener('touchmove', stop, { passive: false });
+    return () => el.removeEventListener('touchmove', stop, { passive: false });
+  }, []);
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape' && !player && stacks.current[tab] && stacks.current[tab].depth) stacks.current[tab].pop(); };
     document.addEventListener('keydown', onKey);
@@ -55,7 +64,7 @@ export default function App() {
             <DepthStackView key={t.key} ref={(r) => { stacks.current[i] = r; }} active={tab === i} label={t.label} root={t.root} screens={SCREENS} />
           ))}
         </main>
-        <div className="chrome">
+        <div className="chrome" ref={chrome}>
           {bar ? <MiniPlayer /> : null}
           <DotTabBar
             tabs={TABS}
