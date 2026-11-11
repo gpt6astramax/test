@@ -1,5 +1,6 @@
 // Line icons as data: [tag, attributes] on a 24 x 24 field, stroke 1.9, round caps and joins. `fill: true` means the
 // shape is filled with the icon's colour. Icon.web.jsx draws them as inline SVG, Icon.jsx with react-native-svg.
+const HEART = 'M3.6 8.8A4.3 4.3 0 0 1 7.9 4.5C9.9 4.5 11 6 12 7.5C13 6 14.1 4.5 16.1 4.5A4.3 4.3 0 0 1 20.4 8.8C20.4 13.8 15.2 17.6 12.7 19.9Q12 20.5 11.3 19.9C8.8 17.6 3.6 13.8 3.6 8.8Z';
 export const ICONS = {
   back: [['path', { d: 'M15 5l-7 7 7 7' }]],
   go: [['path', { d: 'M9 5l7 7-7 7' }]],
@@ -8,8 +9,10 @@ export const ICONS = {
   pause: [['path', { d: 'M8 5v14M16 5v14', strokeWidth: 3.2 }]],
   next: [['path', { d: 'M6 6v12l9-6z', fill: true }], ['path', { d: 'M18 6v12' }]],
   prev: [['path', { d: 'M18 6v12l-9-6z', fill: true }], ['path', { d: 'M6 6v12' }]],
-  heart: [['path', { d: 'M12 20s-7.5-4.6-7.5-10.1A4.2 4.2 0 0 1 12 7.3a4.2 4.2 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z' }]],
-  heartFill: [['path', { d: 'M12 20s-7.5-4.6-7.5-10.1A4.2 4.2 0 0 1 12 7.3a4.2 4.2 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z', fill: true }]],
+  // The heart fills its field: at size 16 it is 12.7 wide, the size it has in a list row. Two round lobes, a V between
+  // them (a mitred join, so the notch is a clean point), a tip that is only just rounded.
+  heart: [['path', { d: HEART, strokeWidth: 2, strokeLinejoin: 'miter' }]],
+  heartFill: [['path', { d: HEART, strokeWidth: 2, strokeLinejoin: 'miter', fill: true }]],
   down: [['path', { d: 'M12 4v11M7 11l5 5 5-5M5 20h14' }]],
   plus: [['path', { d: 'M12 5v14M5 12h14' }]],
   compass: [['circle', { cx: 12, cy: 12, r: 8.5 }], ['path', { d: 'M15.2 8.8l-1.9 4.5-4.5 1.9 1.9-4.5z' }]],

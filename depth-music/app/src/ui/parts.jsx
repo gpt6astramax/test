@@ -67,23 +67,33 @@ export function Mosaic({ ids, style }) {
 
 // ---- a track in a list: cover, title, artist; then only its length and a heart (empty, or pink once liked).
 // A tap anywhere on the row plays it and brings the player up from below.
+//
+// The measures, in points, from the left edge of the column (the screen's edge is 20 further out):
+//   cover 48 x 48, corners 8, a hairline edge            0 .. 48
+//   title 16 / 21 semibold, artist 13 / 18, 2 between    from 60
+//   length 12, monospaced, in the faintest ink           ends 48 before the column's right edge
+//   heart 12.7 wide, its centre 18 from the right edge   (a 36 wide touch area)
+//   row 66 high: the cover has 9 above and below
+//   hairline under the row from the text's left edge to the column's right edge, not under the cover
 export function TrackRow({ track, last }) {
   const S = useS();
   const c = useColors();
   const current = useStore((s) => s.cur === track.id);
   const liked = useStore((s) => !!s.liked[track.id]);
   return (
-    <View style={[S.row, last && S.rowLast]}>
+    <View style={S.row}>
       <Tap style={S.rowMain} label={`播放 ${track.title}`} onPress={() => openPlayer(track.id)}>
         <Cover track={track} style={S.coverSm} />
-        <View style={S.rowText}>
-          <Text style={[S.rowTitle, current && { color: c.acc(track.hue) }]}>{track.title}</Text>
-          <Text style={S.rowSub}>{artistOf(track).name} · {track.genre}</Text>
+        <View style={[S.rowLine, last && S.rowLast]}>
+          <View style={S.rowText}>
+            <Text numberOfLines={1} style={[S.rowTitle, current && { color: c.acc(track.hue) }]}>{track.title}</Text>
+            <Text numberOfLines={1} style={S.rowSub}>{artistOf(track).name}</Text>
+          </View>
+          <Text style={S.rowTime}>{mmss(track.dur)}</Text>
         </View>
-        <Text style={S.rowTime}>{mmss(track.dur)}</Text>
       </Tap>
-      <Tap style={S.heart} label={liked ? '取消收藏' : '收藏'} onPress={() => toggleLike(track.id)}>
-        <Icon name={liked ? 'heartFill' : 'heart'} size={22} color={liked ? c.like : c.fg3} />
+      <Tap style={[S.heart, last && S.rowLast]} label={liked ? '取消收藏' : '收藏'} onPress={() => toggleLike(track.id)}>
+        <Icon name={liked ? 'heartFill' : 'heart'} size={16} color={liked ? c.like : c.fg3} />
       </Tap>
     </View>
   );
@@ -171,18 +181,20 @@ const useS = themed((c, f) => ({
   round: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
 
   cover: { borderRadius: 14, backgroundColor: c.fill },
-  coverSm: { width: 52, height: 52, borderRadius: 11 },
+  coverSm: { width: 48, height: 48, borderRadius: 8, borderWidth: 1, borderColor: c.hair },
   mosaic: { flexDirection: 'row', flexWrap: 'wrap', aspectRatio: 1.5, borderRadius: 14, overflow: 'hidden' },
   mosaicCell: { width: '50%', height: '50%' },
 
-  row: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: c.hair },
+  row: { flexDirection: 'row', alignItems: 'center', height: 66 },
   rowLast: { borderBottomWidth: 0 },
-  rowMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9 },
-  rowText: { flex: 1, minWidth: 0, gap: 1 },
-  rowTitle: { ...f.text, fontSize: 16.5, lineHeight: 21, color: c.fg },
+  rowMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rowLine: { flex: 1, minWidth: 0, height: 66, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: c.hair },
+  rowText: { flex: 1, minWidth: 0, gap: 2 },
+  rowTitle: { ...f.strong, fontSize: 16, lineHeight: 21, color: c.fg },
   rowSub: { ...f.text, fontSize: 13, lineHeight: 18, color: c.fg2 },
-  rowTime: { ...f.text, fontSize: 13, lineHeight: 18, color: c.fg2, fontVariant: ['tabular-nums'] },
-  heart: { width: 44, height: 52, alignItems: 'center', justifyContent: 'center', marginRight: -10 },
+  // the length and the heart sit 1.5 below the row's middle, level with the gap between the two lines of text
+  rowTime: { ...f.mono, fontSize: 12, lineHeight: 16, color: c.fg3, marginLeft: 12, marginRight: 12, marginTop: 3 },
+  heart: { width: 36, height: 66, paddingTop: 3, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: c.hair },
   empty: { ...f.text, fontSize: 15, lineHeight: 23, color: c.fg2, paddingVertical: 10 },
 
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

@@ -6,7 +6,8 @@
    up from below as a sheet; in front floats the tab row. Colour comes only from the tracks. */
 
 @font-face { font-family: "Jost"; font-style: normal; font-weight: 300; font-display: swap; src: url("./fonts/jost-latin-300-normal.woff2") format("woff2"); }
-@font-face { font-family: "Jost"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("./fonts/jost-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Jost"; font-style: normal; font-weight: 400 500; font-display: swap; src: url("./fonts/jost-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Jost"; font-style: normal; font-weight: 600 700; font-display: swap; src: url("./fonts/jost-latin-600-normal.woff2") format("woff2"); }
 
 :root {
   --bg: #f2f2f0; --fg: #111214; --fg2: rgb(17 18 20 / .62); --fg3: rgb(17 18 20 / .36);
