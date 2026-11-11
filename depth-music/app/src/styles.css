@@ -126,6 +126,10 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 .nav { position: absolute; z-index: 2; top: calc(var(--sat, 0px) + 10px); left: var(--gutter-l); right: var(--gutter-r); display: flex; justify-content: space-between; pointer-events: none }
 .nav .tap { pointer-events: auto; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; color: var(--fg); transition: opacity .15s, transform .25s var(--spring) }
 .nav .tap:active { opacity: .6; transform: scale(.94) }
+/* the back button's look (lib/back-style.js): a circle of glass without a border, or the arrow alone */
+html.back-glass .nav .tap { background: none; border: 0; box-shadow: none;
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px) }
+html.back-plain .nav .tap { background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none }
 .glass { background: var(--glass); border: 1px solid var(--glass-edge); box-shadow: var(--lift);
   -webkit-backdrop-filter: blur(26px) saturate(1.7); backdrop-filter: blur(26px) saturate(1.7) }
 

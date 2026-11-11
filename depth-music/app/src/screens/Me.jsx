@@ -8,6 +8,7 @@ import { Tap } from '../ui/Tap';
 import { useStore, set } from '../state';
 import { DEPTH_MODES, getDepthSetting, saveDepthSetting, getDepthMode } from '../lib/depth-mode';
 import { getDriver, setDriver } from '../lib/driver';
+import { BACK_STYLES, getBackStyle, setBackStyle } from '../lib/back-style';
 
 const WEB = Platform.OS === 'web';
 const BUILD = typeof __BUILD__ === 'undefined' ? '' : __BUILD__;      // set by the web build only
@@ -69,6 +70,7 @@ export default function Me() {
       </Section>
 
       {WEB ? <DepthSection /> : null}
+      {WEB ? <BackSection /> : null}
       {WEB ? <GestureSection /> : null}
       {WEB ? <FitSection /> : null}
     </>
@@ -107,6 +109,19 @@ function DepthSection() {
 }
 
 // Web only: what the tab row does while the player is up. Several ways, to compare on a device.
+// Web only: how the back button on a pushed page looks. Two ways, to compare on a device.
+function BackSection() {
+  const [i, setI] = React.useState(() => Math.max(0, BACK_STYLES.findIndex((s) => s.key === getBackStyle())));
+  return (
+    <Section title="返回键">
+      <SetRow title="子页面左上角的返回键" note="立即生效，进一个子页面看" last>
+        <Segmented label="返回键" items={BACK_STYLES.map((s) => s.title)} index={i} onChange={(k) => { setI(k); setBackStyle(BACK_STYLES[k].key); }} />
+      </SetRow>
+      <Fine>无边框毛玻璃：一个只做模糊的圆，没有底色、边框和阴影，和底栏的胶囊一样。只有箭头：没有任何背景。</Fine>
+    </Section>
+  );
+}
+
 // Web only: which ScrollGesture driver the page turns and the player use.
 function GestureSection() {
   const [d, setD] = React.useState(() => (getDriver() === 'js' ? 1 : 0));

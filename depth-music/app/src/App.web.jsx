@@ -17,6 +17,9 @@ import Collection from './screens/Collection';
 import Player from './screens/Player';
 import { useStore, set, closePlayer } from './state';
 import { ChromeCover } from './lib/chrome-cover';
+import { applyBackStyle } from './lib/back-style';
+
+applyBackStyle();                               // before the first paint of any page
 
 const SCREENS = { artist: Artist, collection: Collection };
 const TABS = [
