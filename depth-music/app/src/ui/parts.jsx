@@ -2,7 +2,7 @@
 // come from the theme (ui/theme, ui/fonts), everything platform-bound is behind a component (Tap, Icon, CoverArt, Glass).
 import * as React from 'react';
 import { View, Text } from 'react-native';
-import { Tap } from './Tap';
+import { Tap, GLASS_PRESS } from './Tap';
 import { Icon } from './Icon';
 import { Glass } from './Glass';
 import { CoverArt } from './Cover';
@@ -40,7 +40,7 @@ export function RootHead({ children }) {
     <View style={S.rootHead}>
       <View style={S.head}>{children}</View>
       <View ref={anchor} collapsable={false}>
-        <Tap label="切换浅色和深色" onPress={() => switchTheme(anchor)}>
+        <Tap label="切换浅色和深色" onPress={() => switchTheme(anchor)} pressed={GLASS_PRESS}>
           <Glass radius={21} style={S.round}><ThemeGlyph /></Glass>
         </Tap>
       </View>

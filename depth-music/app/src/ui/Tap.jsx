@@ -5,6 +5,8 @@ import { Pressable } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 const PRESSED = { opacity: 0.6, transform: [{ scale: 0.97 }] };
+/** For a button with glass in it: scale only, never opacity (a blur under a faded parent renders wrongly). */
+export const GLASS_PRESS = { transform: [{ scale: 0.92 }] };
 
 export function Tap({ onPress, style, children, label, haptic = true, role = 'button', pressed: pressedStyle, ...rest }) {
   return (

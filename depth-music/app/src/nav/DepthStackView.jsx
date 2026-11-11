@@ -188,7 +188,7 @@ function Pushed({ page, width: W, onLeave, bottom, children }) {
       <Page bottom={bottom}>{children}</Page>
       <View pointerEvents="box-none" style={{ position: 'absolute', top: insets.top + 10, left: 0, right: 0, alignItems: 'center' }}>
         <View pointerEvents="box-none" style={{ width: '100%', maxWidth: COLUMN, paddingHorizontal: GUTTER, flexDirection: 'row' }}>
-          <Tap label="返回" onPress={() => onLeave(page)} pressed={{ opacity: 0.6, transform: [{ scale: 0.94 }] }}>
+          <Tap label="返回" onPress={() => onLeave(page)} pressed={{ transform: [{ scale: 0.92 }] }}>
             <Glass radius={21} style={{ width: 42, height: 42, alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="back" size={22} color={c.fg} />
             </Glass>

@@ -121,6 +121,8 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 /* a page over a root page covers the tab row: it keeps no room for it at the bottom */
 .layer:not(.root) .page-in { padding-bottom: calc(var(--sab, 0px) + 40px) }
 .nav { position: absolute; z-index: 2; top: calc(var(--sat, 0px) + 10px); left: var(--gutter-l); right: var(--gutter-r); display: flex; justify-content: space-between; pointer-events: none }
+/* every button (ui/Tap): it springs back when let go; the way down is set short while it is pressed */
+[data-tap] { transition-property: opacity, transform; transition-duration: .45s; transition-timing-function: var(--spring) }
 .nav .tap { pointer-events: auto; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; color: var(--fg); transition: opacity .15s, transform .25s var(--spring) }
 .nav .tap:active { opacity: .6; transform: scale(.94) }
 /* the back button's look (lib/back-style.js): a circle of glass without a border, or the arrow alone */
