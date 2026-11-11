@@ -114,7 +114,7 @@ function ChromeSection() {
   return (
     <Section title="播放器升起时的底栏">
       <Picks items={CHROME_MODES} value={mode} onPick={setChromeMode} />
-      <Fine>下次打开播放器时生效。前四种把底栏放在后面那一层的外面，只用位移离开（“原地淡出”用毛玻璃自己的 opacity()）；后两种留在里面。</Fine>
+      <Fine>下次打开播放器时生效。前两种完全不碰底栏，和普通子页面一样；中间四种会动底栏本身（位移，或让它变淡）；最后两种把它留在后面那一层里。</Fine>
     </Section>
   );
 }

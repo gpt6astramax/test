@@ -12,9 +12,12 @@
 //   - what lies under it: transform and opacity. Its blur is either a veil laid over it (glass of fixed radius whose
 //     strength is the opacity() of its backdrop-filter) or, in the 'filter' depth mode, its own filter: blur()
 //     (lib/depth-mode.js says why the first is the default in Chromium);
-//   - the floating chrome (the tab row): it leaves the screen by a transform, never by opacity. Glass stops blurring
-//     as soon as anything it sits in has an opacity below 1, an opacity animation (even one that stays at 1) or a
-//     filter. The 'fade' way dims the row's own parts instead, the glass through opacity() in its backdrop-filter;
+//   - the floating chrome (the tab row): by default nothing at all is done to it. The veil lies over it ('cover'), or
+//     it stays in front of the player ('top'): a row that is left alone, as a pushed page leaves it alone, keeps its
+//     glass on every device it was tried on, and one that is moved away and back has been seen to lose it for a
+//     moment. In the ways that do move it, it leaves by a transform, never by opacity (glass stops blurring as soon
+//     as anything it sits in has an opacity below 1, an opacity animation or a filter); 'fade' dims the row's own
+//     parts instead, the glass through opacity() in its backdrop-filter. It is given back the moment the sheet has gone;
 //   - the handle's two halves: a rotation.
 //
 // As in the page stack: what follows the sheet is moved by the entrance's own animations while it comes up and tied
@@ -95,7 +98,8 @@ function styles() {
  * under     ref to the element that lies under the sheet and recedes
  * veil      ref to an element that covers `under` and nothing else: the glass that puts it out of focus
  * aside     ref to the floating chrome
- * asideMode what it does while the player is up: 'sink' | 'rise' | 'left' | 'fade' (it is outside `under` and leaves),
+ * asideMode what it does while the player is up: 'cover' | 'top' (nothing at all is done to it: under the veil, or in
+ *           front of the player), 'sink' | 'rise' | 'left' | 'fade' (it is outside `under` and leaves),
  *           'noglass' (inside `under`, its own blur off meanwhile), 'asis' (inside `under`, left alone)
  */
 export function PlayerSheet({ open, onClosed, under, veil, aside, asideMode = 'sink', children }) {
@@ -133,7 +137,8 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
     g.current = gesture;
     const tied = supportsTimeline && !!gesture.timeline;
     const tie = (node, name) => { node.style.animation = name + ' linear both'; node.style.animationTimeline = gesture.timeline; };
-    const depth = getDepthMode();
+    // 'cover' hides the tab row under the veil, so there it is a veil whatever the depth setting says
+    const depth = asideMode === 'cover' ? 'veil' : getDepthMode();
     const blur = depth === 'filter';                          // what lies under carries the blur itself
     const v = depth === 'veil' && veil ? veil.current : null; // or a veil over it does
     const chrome = aside && aside.current;
@@ -186,11 +191,23 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
     if (tied) halves.forEach((h, i) => tie(h, i ? 'sh-hr' : 'sh-hl'));
     let flat = false;
 
+    // The row is given back the moment the sheet has gone: the animation that tied it to the sheet and the styles that
+    // placed it come off at once. (What lies under waits until things are quiet, because a finger may be scrolling a
+    // page in it; the row is neither scrolled nor an ancestor of anything that is.) The less time anything is attached
+    // to the row, the better: on a real device its glass has been seen to drop out for a moment around this point.
+    let rowFreed = false;
+    const freeRow = () => {
+      if (!a || rowFreed) return;
+      rowFreed = true;
+      ['animation', 'animation-timeline', 'transform', '--chrome-o', '--sh-x', '--sh-y'].forEach((k) => a.style.removeProperty(k));
+      if (a.inert) a.inert = false;
+    };
     const gone = () => {
       if (left.current) return;
       left.current = true;
-      if (u) u.inert = false;
-      if (a) a.inert = false;
+      if (entering) entered();
+      if (u && u.inert) u.inert = false;
+      freeRow();
       el.current.inert = true;
       latest.current();
     };
@@ -206,7 +223,7 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
         u.style.opacity = String(L(BACK.o, 1));
       }
       if (v) veilTo(veilAt(k));
-      if (a) chromeAt(1 - Math.max(0, Math.min(1, (k - away.ret) / (1 - away.ret))));
+      if (a && !rowFreed) chromeAt(1 - Math.max(0, Math.min(1, (k - away.ret) / (1 - away.ret))));
     });
     const offSettle = gesture.on('settle', (side) => { if (side === 1) gone(); });
     if (reduced()) entered();
@@ -220,18 +237,24 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
     }
     const onKey = (e) => { if (e.key === 'Escape' && !left.current) gesture.go(1); };
     document.addEventListener('keydown', onKey);
+    // 'cover': the row lies under the veil and under the sheet, so no touch reaches it; the keyboard is kept off it
+    // from here, without touching the row (no inert, no attribute): focus that lands on it is let go again
+    const offRow = asideMode === 'cover' && chrome ? (e) => { if (!left.current && chrome.contains(e.target)) e.target.blur(); } : null;
+    if (offRow) document.addEventListener('focusin', offRow);
     return () => {
       offChange(); offSettle();
       document.removeEventListener('keydown', onKey);
+      if (offRow) document.removeEventListener('focusin', offRow);
       entering = false;
       clocks.splice(0).forEach((c) => c.cancel());
       gesture.destroy();
       g.current = null;
       const untie = (node, props) => props.forEach((k) => node.style.removeProperty(k));
-      if (u) { untie(u, ['animation', 'animation-timeline', 'transform', 'filter', 'opacity']); u.classList.remove('sh-back', 'sh-bf'); u.inert = false; }
+      if (u) { untie(u, ['animation', 'animation-timeline', 'transform', 'filter', 'opacity']); u.classList.remove('sh-back', 'sh-bf'); if (u.inert) u.inert = false; }
       if (v) untie(v, ['animation', 'animation-timeline', 'visibility', '-webkit-backdrop-filter', 'backdrop-filter']);
-      if (a) { untie(a, ['animation', 'animation-timeline', 'transform', '--chrome-o', '--sh-x', '--sh-y']); a.inert = false; }
-      if (chrome) chrome.classList.remove('sh-noglass');
+      freeRow();
+      // (only where it was put on: classList.remove() of a class that is not there still writes the attribute)
+      if (chrome && asideMode === 'noglass') chrome.classList.remove('sh-noglass');
     };
   }, []);                                                        // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -240,8 +263,8 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
     if (open || !g.current || left.current) return;
     if (reduced()) {
       left.current = true;
-      if (under && under.current) under.current.inert = false;
-      if (aside && aside.current) aside.current.inert = false;
+      if (under && under.current && under.current.inert) under.current.inert = false;
+      if (aside && aside.current && aside.current.inert) aside.current.inert = false;   // (only if it was set: an untouched row stays untouched)
       latest.current();
     } else g.current.go(1);
   }, [open]);                                                    // eslint-disable-line react-hooks/exhaustive-deps

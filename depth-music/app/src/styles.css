@@ -171,6 +171,12 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 /* What lies under the sheet drops back, tied to the sheet (ui/PlayerSheet.web.jsx). Over it, and under the chrome,
    lies the veil that puts it out of focus: glass that is only there while a player is. */
 .sheet-veil { position: absolute; inset: 0; z-index: 4; pointer-events: none; visibility: hidden }
+/* chrome mode 'cover': the veil lies over the tab row as well. Nothing is done to the row itself. */
+.sheet-veil.over { z-index: 6 }
+/* chrome mode 'top': the tab row stays in front of the player, as it is in front of every other page; the player's
+   content then ends clear of it, as a page's does */
+.chrome.top { z-index: 25 }
+.chrome-top .sheet-in { padding-bottom: calc(var(--sab, 0px) + var(--chrome) + 56px) }
 
 #toast { position: absolute; z-index: 30; left: 50%; bottom: calc(var(--sab, 0px) + var(--chrome) + 14px); transform: translate(-50%, 10px); padding: 9px 16px; border-radius: 999px;
   font-size: 13.5px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .25s, transform .35s var(--spring) }

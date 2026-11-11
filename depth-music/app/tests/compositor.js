@@ -96,7 +96,7 @@ const lead = (img, x, y, ch) => { const p = img.px(x, y); return p[ch] - Math.ma
     const ctx = await browser.newContext({ viewport: { width: 393, height: 852 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
     const page = await ctx.newPage();
     const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-    await page.addInitScript((d) => { localStorage.setItem('depth-music:driver', 'scroll'); localStorage.setItem('depth-music:chrome', 'sink'); localStorage.setItem('depth-music:depth', d); }, depth);
+    await page.addInitScript((d) => { localStorage.setItem('depth-music:driver', 'scroll'); localStorage.setItem('depth-music:chrome-2', 'sink'); localStorage.setItem('depth-music:depth', d); }, depth);
     await page.goto(`http://127.0.0.1:${server.address().port}/depth-music/`); await sleep(1300);
     const cdp = await ctx.newCDPSession(page);
     const mark = (sel, css) => page.evaluate(([s, c]) => { const d = document.createElement('div'); d.className = 'test-mark'; d.style.cssText = 'position:absolute;z-index:50;pointer-events:none;' + c; document.querySelector(s).appendChild(d); }, [sel, css]);

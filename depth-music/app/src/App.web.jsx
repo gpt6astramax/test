@@ -12,7 +12,7 @@ import Me from './screens/Me';
 import Artist from './screens/Artist';
 import Collection from './screens/Collection';
 import Player from './screens/Player';
-import { useStore, set, closePlayer } from './state';
+import { useStore, set, state, closePlayer } from './state';
 import { chromeStays } from './lib/chrome-mode';
 
 const SCREENS = { artist: Artist, collection: Collection };
@@ -36,6 +36,8 @@ export default function App() {
   const pending = React.useRef(null);           // a page to open once the player has gone
 
   React.useLayoutEffect(() => { document.getElementById('app').classList.toggle('has-bar', bar); }, [bar]);
+  // (set when the way is chosen, not when the player opens: nothing changes around the row at that moment)
+  React.useLayoutEffect(() => { document.getElementById('app').classList.toggle('chrome-top', mode === 'top'); }, [mode]);
   // A drag that starts on the floating chrome scrolls nothing, and must not be handed to the document either (it
   // would take the whole screen with it). The play bar is a gesture of its own and keeps its drags.
   const chrome = React.useRef(null);
@@ -62,14 +64,20 @@ export default function App() {
 
   // The floating chrome. Where it lives depends on what it does while the player is up (lib/chrome-mode.js): by
   // default outside what goes out of focus, because its blur must never sit inside something that is itself blurred.
+  // Its classes depend on the chosen way only, never on whether the player is up: in the ways that leave the row
+  // alone, nothing about it changes when the player comes or goes.
+  //   top: in front of the player, and in use there: choosing a tab puts the player away first
   const chromeEl = (
-    <div className="chrome" ref={chrome}>
+    <div className={'chrome' + (mode === 'top' ? ' top' : '')} ref={chrome}>
       {bar ? <MiniPlayer /> : null}
       <DotTabBar
         tabs={TABS}
         index={tab}
-        onChange={(i) => set({ tab: i })}
-        onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}
+        onChange={(i) => { if (state.player) closePlayer(); set({ tab: i }); }}
+        onReselect={(i) => {
+          if (state.player) { closePlayer(); return; }
+          const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); }
+        }}
       />
     </div>
   );
@@ -85,8 +93,9 @@ export default function App() {
         </main>
         {stays ? chromeEl : null}
       </div>
-      {/* the glass that puts the pages out of focus behind the player (ui/PlayerSheet) */}
-      <div className="sheet-veil" ref={veil} />
+      {/* the glass that puts the pages out of focus behind the player (ui/PlayerSheet); with 'cover' it lies over the
+          chrome too (it is later in the tree and gets a higher z-index) */}
+      <div className={'sheet-veil' + (mode === 'cover' ? ' over' : '')} ref={veil} />
       {stays ? null : chromeEl}
       <PlayerSheet open={player} under={under} veil={veil} aside={chrome} asideMode={mode} onClosed={onPlayerClosed}>
         <Player onNavigate={fromPlayer} />

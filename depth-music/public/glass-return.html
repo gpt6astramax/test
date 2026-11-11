@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>底栏返回时掉毛玻璃：逐项对照</title>
+<style>
+  html { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100% }
+  body { margin: 0; font: 15px/1.5 -apple-system, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif; color: #111;
+    /* sharp stripes behind everything: where a blur works they are gone, where it fails they show through */
+    background: repeating-linear-gradient(90deg, #111 0 12px, #fff 12px 24px) fixed }
+  main { max-width: 460px; margin: 0 auto; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 40px) }
+  .note, .case > p { background: #fff; border-radius: 12px; padding: 10px 14px; margin: 0 }
+  .note { margin-bottom: 18px }
+  .note b, .case b { font-weight: 600 }
+  h2 { font-size: 15px; font-weight: 600; margin: 26px 0 10px; background: #111; color: #fff; border-radius: 8px; padding: 6px 12px }
+  .case { margin-bottom: 18px }
+  .case > p { border-radius: 12px 12px 0 0; padding-bottom: 8px }
+  .case > p small { display: block; color: #666; font-size: 12.5px; line-height: 1.45 }
+  .case > p code { font: 12.5px/1.4 ui-monospace, Menlo, Consolas, monospace; background: #f0f0f0; border-radius: 4px; padding: 0 4px }
+  .ok { color: #0a7a3c } .bad { color: #b3261e }
+  /* the sample: a strip of the striped ground with a tab row on it, built as in the app:
+       .wrap (the app's .chrome)  >  .row (the tab row, a label there)  >  .haze (the capsule: only blur) + icons */
+  .stage { position: relative; height: 96px; display: grid; place-items: center; overflow: hidden; outline: 2px solid #fff; outline-offset: -2px }
+  .case > .stage:last-child, .case > .slider:last-child { border-radius: 0 0 12px 12px }
+  .wrap { position: relative; z-index: 5; width: 82%; will-change: transform }
+  .wrap.plain { will-change: auto }
+  .row { position: relative; display: flex; height: 52px }
+  .row b { flex: 1; display: grid; place-items: center }
+  .row b::after { content: ""; width: 22px; height: 22px; border: 2px solid #111; border-radius: 50%; box-sizing: border-box }
+  .haze { position: absolute; z-index: -1; inset: 0; border-radius: 999px; pointer-events: none; transform: translateZ(0); border: 1px solid rgb(255 255 255 / .9); box-sizing: border-box;
+    -webkit-backdrop-filter: blur(18px) opacity(1); backdrop-filter: blur(18px) opacity(1) }
+  /* something lying behind the row inside the stage (the app's page layer): coloured stripes, to tell them apart */
+  .behind { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, #0b3d91 0 12px, #ffe9a8 12px 24px) }
+  .behind i { position: absolute; left: 8px; top: 8px; width: 36px; height: 20px; border-radius: 10px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border: 1px solid #fff }
+  /* a sheet of glass over or under the row (the app's veil) */
+  .veil { position: absolute; inset: 0; pointer-events: none; -webkit-backdrop-filter: blur(20px) opacity(1); backdrop-filter: blur(20px) opacity(1) }
+  .veil.over { z-index: 6 } .veil.below { z-index: 4; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px) }
+  /* the strip to drag: its scroll position drives the sample above it */
+  .slider { height: 40px; overflow-x: auto; overflow-y: hidden; background: #fff; border-top: 1px dashed #bbb; scrollbar-width: none }
+  .slider::-webkit-scrollbar { display: none }
+  .slider > div { width: 300%; height: 100%; display: flex; align-items: center; justify-content: space-around; color: #666; font-size: 12.5px;
+    background: repeating-linear-gradient(90deg, #f4f4f4 0 40px, #fff 40px 80px) }
+  @keyframes to-and-fro { from { transform: translateX(-16px) } to { transform: translateX(16px) } }
+  @keyframes shift { from { transform: none } to { transform: translateY(26px) } }
+  @keyframes out-and-back { 0%, 35% { transform: translateX(-130%) } 55%, 100% { transform: none } }
+  @keyframes recede { from { transform: none; opacity: 1 } to { transform: translateY(4%) scale(.86); opacity: .5 } }
+  @keyframes thin { from { -webkit-backdrop-filter: blur(20px) opacity(0); backdrop-filter: blur(20px) opacity(0) } to { -webkit-backdrop-filter: blur(20px) opacity(1); backdrop-filter: blur(20px) opacity(1) } }
+  .nosda { display: none; color: #b3261e }
+  @supports not (animation-timeline: scroll()) { .nosda { display: block } }
+</style>
+</head>
+<body>
+<main>
+  <div class="note">
+    <b>这页是干什么的：</b>播放器收起、底栏回来的那一小段，底栏的毛玻璃在真机上会掉一下；而在普通子页面里底栏一直正常。两者的区别是：子页面不碰底栏，播放器会对底栏做下面这些事。这里把每件事单独做成一格。<br>
+    <b>怎么看：</b>每格里有一条和 App 里结构相同的底栏（一个容器，里面一条只做模糊的胶囊）。胶囊里<b>看不到条纹</b>是正常；<b>能看到清晰条纹</b>就是这一项让毛玻璃失效了。带滑条的格子，拖动滑条时和停在两端时都看一下。<br>
+    每格写着无头 Chromium 里的结果。真机上我量不了，以你看到的为准。
+  </div>
+
+  <h2>一、对底栏容器做的事</h2>
+
+  <div class="case"><p>R1 · 对照：什么都不加<small>Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="wrap plain"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
+
+  <div class="case"><p>R2 · 容器 <code>will-change: transform</code><small>App 里底栏容器一直带着它；下面各格也都带着。Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="wrap"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
+
+  <div class="case"><p>R3 · 容器位移了一段，停着不动<small><code>transform: translateY(14px)</code>。Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="wrap" style="transform:translateY(14px)"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
+
+  <div class="case"><p>R4 · 容器带按时间走的位移动画<small>Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="wrap" style="animation:to-and-fro 1.2s ease-in-out infinite alternate"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
+
+  <div class="case" style="timeline-scope:--r5"><p>R5 · 容器带<b>跟着滚动走</b>的位移动画<small>底栏跟着播放器回来，用的就是这种。拖下面的滑条：滑条在最左时位移是 0，但动画仍然挂着。Chromium：两端和途中都<span class="ok">糊</span><span class="nosda">这个浏览器不支持滚动驱动动画，这一格不会动。</span></small></p>
+    <div class="stage"><div class="wrap" style="animation:shift linear both;animation-timeline:--r5"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div>
+    <div class="slider" style="scroll-timeline:--r5 x"><div><span>← 拖这里 →</span><span>← 拖这里 →</span><span>← 拖这里 →</span></div></div></div>
+
+  <div class="case"><p>R6 · 容器上有一段已经放完、停在终点的脚本动画<small><code>element.animate(…, { fill: 'forwards' })</code>，终点位移为 0。点这一格可以重放。Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage" id="r6"><div class="wrap"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
+
+  <div class="case"><p>R7 · 容器 <code>inert</code><small>播放器在上面时，底栏是 inert 的。Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="wrap" inert><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
+
+  <div class="case"><p>R8 · 容器先在画面外，再移回来<small>每 3 秒一次。回来的途中和停下之后都看。Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="wrap" style="animation:out-and-back 3s ease-in-out infinite"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
+
+  <h2>二、底栏后面、上面的东西</h2>
+
+  <div class="case"><p>R9 · 后面那一层 <code>opacity: .5</code>，它里面也有一小块毛玻璃<small>后面是蓝黄条纹。Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="behind" style="opacity:.5"><i></i></div><div class="wrap"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
+
+  <div class="case"><p>R10 · 后面那一层 <code>filter: blur(1.5px)</code><small>Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="behind" style="-webkit-filter:blur(1.5px);filter:blur(1.5px)"><i></i></div><div class="wrap"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
+
+  <div class="case" style="timeline-scope:--r11"><p>R11 · 后面那一层带<b>跟着滚动走</b>的缩小和变淡<small>播放器收起时，底栏后面的页面就是这样回来的。拖滑条。Chromium：<span class="ok">糊</span><span class="nosda">这个浏览器不支持滚动驱动动画，这一格不会动。</span></small></p>
+    <div class="stage"><div class="behind" style="animation:recede linear both;animation-timeline:--r11"><i></i></div><div class="wrap"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div>
+    <div class="slider" style="scroll-timeline:--r11 x"><div><span>← 拖这里 →</span><span>← 拖这里 →</span><span>← 拖这里 →</span></div></div></div>
+
+  <div class="case" style="timeline-scope:--r12"><p>R12 · 底栏上面再盖一层毛玻璃罩，罩的浓淡跟着滚动走<small>新的默认做法：不碰底栏，让播放器的罩盖住它。滑条在最左时罩是透明的，底栏应当正常；往右拖，底栏和条纹一起变虚。Chromium：<span class="ok">如上</span><span class="nosda">这个浏览器不支持滚动驱动动画，这一格不会动。</span></small></p>
+    <div class="stage"><div class="wrap"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div><div class="veil over" style="animation:thin linear both;animation-timeline:--r12"></div></div>
+    <div class="slider" style="scroll-timeline:--r12 x"><div><span>← 拖这里 →</span><span>← 拖这里 →</span><span>← 拖这里 →</span></div></div></div>
+
+  <div class="case"><p>R13 · 底栏下面垫一层毛玻璃<small>子页面里就是这个结构（你已经确认正常）。Chromium：<span class="ok">糊</span></small></p>
+    <div class="stage"><div class="veil below"></div><div class="wrap"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
+
+  <div class="note">
+    如果第一部分里有哪一格露出清晰条纹，原因就是那一项，旧的几种“底栏离开”方案可以对着它改。<br>
+    如果只有 R11 不正常，问题在底栏后面那一层，和底栏自己无关。<br>
+    R12 是新默认方案依赖的结构：它正常，新方案就没有问题。
+  </div>
+</main>
+<script>
+  // no pinch zoom (iOS ignores user-scalable=no); touch-action on <html> already takes care of the double tap
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) { document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false }); });
+  // R6: an animation that has run out and holds its end (transform: none)
+  (function () {
+    var stage = document.getElementById('r6'), wrap = stage.querySelector('.wrap'), last = null;
+    function play() { if (last) last.cancel(); if (wrap.animate) last = wrap.animate([{ transform: 'translateY(26px)' }, { transform: 'none' }], { duration: 600, easing: 'ease-out', fill: 'forwards' }); }
+    stage.addEventListener('click', play);
+    play();
+  })();
+</script>
+</body>
+</html>
