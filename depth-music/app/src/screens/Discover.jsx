@@ -1,16 +1,19 @@
 import * as React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import { Big, Eyebrow, RootHead, Section, Rows, Chip, Chips, Tile, Tiles, Cover } from '../ui/parts';
 import { Tap } from '../ui/Tap';
 import { Icon } from '../ui/Icon';
 import { Wave } from '../ui/Wave';
-import { useNav } from '../nav/DepthStackView';
+import { themed } from '../ui/themed';
+import { useColors } from '../ui/theme';
+import { useNav } from '../nav/context';
 import { byId, artistOf, MOODS, PLAYLISTS } from '../data';
-import { acc } from '../art';
 import { useStore, openPlayer, togglePlay } from '../state';
 
 export default function Discover() {
   const nav = useNav();
+  const S = useS();
+  const c = useColors();
   const f = byId.t7;
   const playing = useStore((s) => s.cur === f.id && s.playing);
   return (
@@ -30,8 +33,8 @@ export default function Discover() {
             <Text style={S.featureTitle}>{f.title}</Text>
             <Text style={S.featureSub}>{artistOf(f).name} · {f.bpm} BPM · {f.key}</Text>
           </Tap>
-          <Tap style={[S.play, { backgroundColor: acc(f.hue) }]} label={playing ? '暂停' : '播放'} onPress={() => togglePlay(f.id)}>
-            <Icon name={playing ? 'pause' : 'play'} size={24} color="var(--on-acc)" />
+          <Tap style={[S.play, { backgroundColor: c.acc(f.hue) }]} label={playing ? '暂停' : '播放'} onPress={() => togglePlay(f.id)}>
+            <Icon name={playing ? 'pause' : 'play'} size={24} color={c.onAcc} />
           </Tap>
         </View>
         <Wave track={f} height={54} seekable />
@@ -56,12 +59,12 @@ export default function Discover() {
   );
 }
 
-const S = StyleSheet.create({
+const useS = themed((c, f) => ({
   feature: { gap: 14 },
   featureCover: { width: '100%', aspectRatio: 1.62, borderRadius: 18 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   featureText: { flex: 1, minWidth: 0, gap: 2 },
-  featureTitle: { fontFamily: 'var(--display)', fontSize: 27, lineHeight: 31, fontWeight: '300', letterSpacing: 0.3, color: 'var(--fg)' },
-  featureSub: { fontFamily: 'var(--text)', fontSize: 14, lineHeight: 19, color: 'var(--fg2)' },
+  featureTitle: { ...f.display, fontSize: 27, lineHeight: 31, letterSpacing: 0.3, color: c.fg },
+  featureSub: { ...f.text, fontSize: 14, lineHeight: 19, color: c.fg2 },
   play: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
-});
+}));

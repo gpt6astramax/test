@@ -83,7 +83,7 @@
 
 ## 7. 底栏（DotTabBar）
 
-以后常用的底栏，封装在 `app/src/ui/DotTabBar.web.jsx`，自带样式，单文件加 `glider.js`、`platform.js` 即可搬走。
+以后常用的底栏。网页版是 `app/src/ui/DotTabBar.web.jsx`，自带样式，加上 `glider.js`、`platform.js` 即可搬走；iOS / Android 版是 `app/src/ui/DotTabBar.jsx`，属性相同。
 
 - 只有图标，没有文字。当前页签的图标是墨色，其余是三级灰；当前图标下方有一个 6px 的圆点。
 - 高 52px。图标 25px，在这一行里垂直居中。
@@ -120,27 +120,35 @@
 
 ## 9. 触感
 
-- 所有按钮都是 `<label>` 包隐藏开关的写法（`Tap` 组件）；开关只在 iPhone 上渲染，不设 tabindex。
-- iPhone 网页一次点按只能震一下，拖动途中不能震。
+- 网页：所有按钮都是 `<label>` 包隐藏开关的写法（`Tap` 组件）；开关只在 iPhone 上渲染，不设 tabindex。iPhone 网页一次点按只能震一下，拖动途中不能震。
+- iOS / Android：`Tap` 和底栏走 expo-haptics 的选择触感，底栏拖动时每经过一个页签震一下。
 
 ## 10. 技术结构
 
-React Native 写法，网页端用 react-native-web 渲染。页面内容用 `View`、`Text`、`Pressable`、`Image`、`TextInput`；手势、模糊、滚动时间线这些只有网页有的部分放在 `.web.jsx` 文件里，和 scroll-gesture 库的做法一致。
+一份 React Native 代码，三个平台：
 
-| 路径 | 内容 |
-|---|---|
-| `app/src/lib/scroll-gesture.js` | 手势核心（从 swipe 仓库复制） |
-| `app/src/lib/depth-stack.js` | 景深页面栈，不依赖框架 |
-| `app/src/nav/DepthStackView.web.jsx` | 页面栈的 React 封装，`useNav()` |
-| `app/src/ui/DotTabBar.web.jsx` | 底栏组件 |
-| `app/src/ui/glider.js` | 底栏和分段切换共用的弹簧滑块 |
-| `app/src/ui/PlayerSheet.web.jsx` | 播放器面板 |
-| `app/src/ui/Tap.jsx`、`parts.jsx` | 按钮、文字、列表行、标签等内容组件 |
-| `app/src/screens/` | 各页面 |
-| `app/src/styles.css` | 设计令牌、根布局、页面栈和面板的样式 |
-| `public/` | 构建结果，仓库部署的就是它 |
+- **网页**：react-native-web 渲染，Vite 构建，部署的就是它。
+- **iOS / Android**：Expo（SDK 58），可以直接用 Expo Go 打开。
 
-构建：
+页面和页面里的所有内容组件（`screens/`、`ui/parts.jsx`）两端共用，只用 `View`、`Text`、`TextInput` 和下面这些封装好的组件，颜色和字体一律从主题取（`useColors()`、`themed()`），不直接写平台专用的值。和平台绑定的部分各写一份，文件名成对：`X.web.jsx` 给网页，`X.jsx` 给 iOS / Android，打包工具自己挑。
+
+| 成对的文件 | 网页（`.web.jsx`） | iOS / Android（`.jsx`） |
+|---|---|---|
+| `App` | 入口 `main.jsx` + `index.html` | 入口 `index.js`（`registerRootComponent`） |
+| `nav/DepthStackView` | 原生滚动手势 + 滚动时间线（`lib/depth-stack.js`） | `Animated` + `PanResponder`，模糊用 expo-blur |
+| `ui/DotTabBar` | `<label>` + 隐藏开关，`glider.js` 的弹簧 | 同一套弹簧参数，触感用 expo-haptics |
+| `ui/PlayerSheet` | 纵向的原生滚动手势 | `Animated` + `PanResponder` |
+| `ui/Tap` | `<label>` 包隐藏开关 | `Pressable` + expo-haptics |
+| `ui/theme` | CSS 变量，切换时圆形铺开 | 主题值放在 context 里，切换时旧纸面盖上来再淡出 |
+| `ui/fonts` | CSS 里的 Jost | expo-font 加载 Jost |
+| `ui/Icon`、`ui/Cover`、`ui/Wave` | 内联 SVG、canvas、CSS mask | react-native-svg、`View` |
+| `ui/Glass`、`ui/Segmented`、`ui/MiniPlayer` | backdrop-filter、弹簧滑块 | expo-blur、`Animated` |
+
+两端共用的数据和算法：`data.js`、`state.js`、`artdata.js`（封面和波形的形状）、`ui/icon-paths.js`、`ui/color.js`（oklch 转 sRGB，原生端用）。
+
+### 在 Expo Go 里打开
+
+电脑和手机连同一个网络，手机装好 Expo Go（要支持 SDK 58）。
 
 ```bash
 cd depth-music/app
@@ -151,11 +159,35 @@ npm install
 ```
 
 ```bash
+npx expo start
+```
+
+终端里会出现二维码：iPhone 用相机扫，安卓用 Expo Go 里的扫码。两台设备不在同一个网络时改用：
+
+```bash
+npx expo start --tunnel
+```
+
+### 构建网页版
+
+```bash
 npm run build
 ```
 
-## 11. 还没做的
+结果写到 `depth-music/public/`，仓库部署的就是这个文件夹。
 
-- 没有 iOS / Android 原生端的实现：手势、模糊和滚动时间线目前只有网页版。
+## 11. 原生端和网页端不一样的地方
+
+- **后面那页的虚化**：网页是对那一层本身做模糊；原生端是在它上面盖一层 expo-blur，模糊强度跟着翻页进度走。Android 上 expo-blur 默认不做真模糊，只是一层半透明的色调，所以 Android 上后面那页是缩小、下沉、变淡，但不虚。
+- **底栏的模糊胶囊**：网页上向四周渐渐变清晰、没有边缘；原生端没法给模糊做渐变遮罩，iOS 上用三层由外到内逐渐加强的胶囊来近似，Android 上是一个半透明胶囊。
+- **内容错开进入**：网页上新页的各块依次错开 20ms 进来；原生端整页一起进。
+- **主题切换**：网页从按钮处圆形铺开；原生端是旧纸面盖上来再淡出。
+- **播放条**：网页上可以左右滑切歌；原生端只有点按。
+- **分段切换**：网页上滑块跟手；原生端只有点按。
+- **Android 的返回键**：先收播放器，再退一页，在页签第一页时交给系统。
+
+## 12. 还没做的
+
+- 原生端只做过打包检查（iOS 和 Android 的包都能打出来），以及把原生那套代码放进浏览器里跑过全部交互；**没有在真机或模拟器上跑过**，第一次用 Expo Go 打开时可能还有要调的地方。
 - 没有音频，播放进度是模拟的。
-- 主屏幕模式下铺满整屏的问题在这台测试手机上没有解决，“我的”里保留了手动开关和屏幕数据。
+- 主屏幕模式下铺满整屏的问题在这台测试手机上没有解决，“我的”里保留了手动开关和屏幕数据（只在网页版显示）。

@@ -8,7 +8,7 @@ import { Tap } from './Tap';
 import { Icon } from './Icon';
 import { Cover } from './parts';
 import { artistOf, byId } from '../data';
-import { accRaw } from '../art';
+import { accRaw } from '../art.web';
 import { useStore, step, togglePlay, openPlayer, showProgress } from '../state';
 import { buzz } from './platform';
 

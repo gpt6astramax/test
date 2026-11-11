@@ -1,6 +1,7 @@
 // The app's state: what plays, what is liked, what floats. One small store; components read it with useStore().
-// Playback is simulated (the prototype has no audio): a clock moves `t` forward and the progress is written straight
-// to the elements that show it, so a tick re-renders nothing.
+// Playback is simulated (the prototype has no audio): a clock moves `t` forward. On the web the progress is written
+// straight to the elements that show it (showProgress), so a tick re-renders nothing; on iOS / Android the few
+// components that show it follow the tick with useProgress().
 import { useSyncExternalStore } from 'react';
 import { TRACKS, byId, mmss } from './data';
 
@@ -27,7 +28,11 @@ function paint(entry) {
   if (entry.kind === 'time') entry.el.textContent = mmss(on ? state.t : 0);
   else entry.el.style.setProperty('--prog', String(on ? Math.max(0, Math.min(1, state.t / t.dur)) : 0));
 }
-const paintAll = () => shown.forEach(paint);
+const ticks = new Set();
+const paintAll = () => { shown.forEach(paint); ticks.forEach((fn) => fn()); };
+const onTick = (fn) => { ticks.add(fn); return () => ticks.delete(fn); };
+/** Seconds played of track `id` (0 while another track plays), updated four times a second. */
+export const useProgress = (id) => useSyncExternalStore(onTick, () => (state.cur === id ? state.t : 0));
 
 // ---- actions
 export function setTrack(id) { set({ cur: id, t: 0, playing: true }); paintAll(); }
@@ -63,9 +68,9 @@ export function toast(text) {
   toastT = setTimeout(() => set({ toast: null }), 1800);
 }
 
-if (typeof window !== 'undefined') {
+{
   setInterval(() => {
-    if (!state.playing || document.hidden) return;
+    if (!state.playing || (typeof document !== 'undefined' && document.hidden)) return;
     state.t += 0.25;
     if (state.t >= cur().dur) step(1); else paintAll();
   }, 250);

@@ -2,19 +2,31 @@
   "name": "depth-music",
   "private": true,
   "version": "2.0.0",
-  "description": "Music app prototype with depth-of-field page turns, written in React Native and run on the web with react-native-web",
-  "type": "module",
+  "description": "Music app prototype with depth-of-field page turns, written in React Native: iOS and Android through Expo, the web through react-native-web",
+  "main": "index.js",
   "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
     "dev": "vite",
     "build": "vite build"
+  },
+  "dependencies": {
+    "@expo-google-fonts/jost": "^0.4.2",
+    "expo": "~58.0.22",
+    "expo-blur": "~58.0.5",
+    "expo-font": "~58.0.11",
+    "expo-haptics": "~58.0.7",
+    "expo-status-bar": "~58.0.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.11.1",
+    "react-native-svg": "15.16.0",
+    "react-native-web": "^0.21.4"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.3.0",
     "vite": "^8.3.7"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-native-web": "^0.21.4"
   }
 }

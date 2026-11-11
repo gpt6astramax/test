@@ -7,9 +7,7 @@
 import * as React from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { DepthStack } from '../lib/depth-stack';
-
-const NavContext = React.createContext(null);
-export const useNav = () => React.useContext(NavContext);
+import { NavContext } from './context';
 
 export const DepthStackView = React.forwardRef(function DepthStackView({ active, label, root: Root, screens }, ref) {
   const host = React.useRef(null);

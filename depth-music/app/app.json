@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "景深翻页",
+    "slug": "depth-music",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "platforms": ["ios", "android"],
+    "icon": "./static/icons/512x512.png",
+    "ios": { "supportsTablet": true },
+    "android": { "adaptiveIcon": { "foregroundImage": "./static/icons/512x512.png", "backgroundColor": "#f2f2f0" } }
+  }
+}

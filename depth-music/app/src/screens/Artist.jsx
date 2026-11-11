@@ -1,9 +1,8 @@
 import * as React from 'react';
-import { View, Image, StyleSheet } from 'react-native';
-import { Eyebrow, Lede, Title, Section, Rows, Chip, Chips, Stats } from '../ui/parts';
-import { useNav } from '../nav/DepthStackView';
+import { View } from 'react-native';
+import { Eyebrow, Lede, Title, Section, Rows, Chip, Chips, Stats, ArtistDisc } from '../ui/parts';
+import { useNav } from '../nav/context';
 import { ARTISTS, TRACKS, MOODS } from '../data';
-import { artistCover } from '../art';
 
 export default function Artist({ id }) {
   const nav = useNav();
@@ -13,8 +12,8 @@ export default function Artist({ id }) {
   const moods = [...new Set(tracks.flatMap((t) => t.moods))];
   return (
     <>
-      <View style={S.who}>
-        <Image source={{ uri: artistCover(a, a.hue) }} style={S.disc} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+        <ArtistDisc artist={a} />
         <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
           <Eyebrow>音乐人 · {a.from}</Eyebrow>
           <Title size={30}>{a.name}</Title>
@@ -33,8 +32,3 @@ export default function Artist({ id }) {
     </>
   );
 }
-
-const S = StyleSheet.create({
-  who: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  disc: { width: 92, height: 92, borderRadius: 46, backgroundColor: 'var(--fill)' },
-});

@@ -1,10 +1,16 @@
-// The app: four tabs, each a depth stack of its own; the tab row floating in front; the player as a sheet over it all.
+// The app on iOS / Android (Expo): four tabs, each a depth stack of its own; the tab row floating in front; the player
+// as a sheet over it all. App.web.jsx is the web twin; the screens and everything they are made of are shared.
 import * as React from 'react';
+import { Animated, BackHandler, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { DepthStackView } from './nav/DepthStackView';
 import { DotTabBar } from './ui/DotTabBar';
-import { PlayerSheet } from './ui/PlayerSheet';
+import { PlayerSheet, Receding, sheetMotion } from './ui/PlayerSheet';
 import { MiniPlayer } from './ui/MiniPlayer';
-import { Icon } from './ui/Icon';
+import { Glass } from './ui/Glass';
+import { ThemeProvider, useColors } from './ui/theme';
+import { font, useAppFonts } from './ui/fonts';
 import Discover from './screens/Discover';
 import Search from './screens/Search';
 import Library from './screens/Library';
@@ -16,26 +22,43 @@ import { useStore, set, closePlayer } from './state';
 
 const SCREENS = { artist: Artist, collection: Collection };
 const TABS = [
-  { key: 'discover', label: '发现', icon: <Icon name="compass" size={25} />, root: Discover },
-  { key: 'search', label: '搜索', icon: <Icon name="search" size={25} />, root: Search },
-  { key: 'library', label: '曲库', icon: <Icon name="stack" size={25} />, root: Library },
-  { key: 'me', label: '我的', icon: <Icon name="user" size={25} />, root: Me },
+  { key: 'discover', label: '发现', icon: 'compass', root: Discover },
+  { key: 'search', label: '搜索', icon: 'search', root: Search },
+  { key: 'library', label: '曲库', icon: 'stack', root: Library },
+  { key: 'me', label: '我的', icon: 'user', root: Me },
 ];
+const GUTTER = 20, COLUMN = 460;
 
-export default function App() {
+export default function Root() {
+  const ready = useAppFonts();
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>{ready ? <App /> : null}</ThemeProvider>
+    </SafeAreaProvider>
+  );
+}
+
+function App() {
+  const c = useColors();
+  const insets = useSafeAreaInsets();
   const tab = useStore((s) => s.tab);
   const bar = useStore((s) => s.bar);
   const player = useStore((s) => s.player);
-  const message = useStore((s) => s.toast);
   const stacks = React.useRef([]);
-  const under = React.useRef(null);
   const pending = React.useRef(null);           // a page to open once the player has gone
+  const motion = React.useRef(null);
+  if (!motion.current) motion.current = sheetMotion();
+  const chrome = bar ? 150 : 84;                // what the floating chrome covers at the bottom of a page
 
-  React.useLayoutEffect(() => { document.getElementById('app').classList.toggle('has-bar', bar); }, [bar]);
+  // Android's back: the player first, then a page; from a tab's first page the system takes it
   React.useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && !player && stacks.current[tab] && stacks.current[tab].depth) stacks.current[tab].pop(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (player) { closePlayer(); return true; }
+      const s = stacks.current[tab];
+      if (s && s.depth) { s.pop(); return true; }
+      return false;
+    });
+    return () => sub.remove();
   }, [tab, player]);
 
   // from the player: close it, then open the page in the tab underneath
@@ -48,27 +71,51 @@ export default function App() {
   };
 
   return (
-    <>
-      <div className="under" ref={under}>
-        <main className="views">
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
+      <StatusBar style={c.dark ? 'light' : 'dark'} />
+      <Receding motion={motion.current} inert={player}>
+        <View style={StyleSheet.absoluteFill}>
           {TABS.map((t, i) => (
-            <DepthStackView key={t.key} ref={(r) => { stacks.current[i] = r; }} active={tab === i} label={t.label} root={t.root} screens={SCREENS} />
+            <DepthStackView key={t.key} ref={(r) => { stacks.current[i] = r; }} active={tab === i} label={t.label} root={t.root} screens={SCREENS} bottom={chrome} />
           ))}
-        </main>
-        <div className="chrome">
-          {bar ? <MiniPlayer /> : null}
-          <DotTabBar
-            tabs={TABS}
-            index={tab}
-            onChange={(i) => set({ tab: i })}
-            onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}
-          />
-        </div>
-      </div>
-      <PlayerSheet open={player} under={under} onClosed={onPlayerClosed}>
+        </View>
+        {/* above the home indicator and clear of the screen's edge: the tab row's blur ends above it */}
+        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom - 4, 26), alignItems: 'center' }}>
+          <View pointerEvents="box-none" style={{ width: '100%', maxWidth: COLUMN, paddingHorizontal: GUTTER, gap: 8 }}>
+            {bar ? <MiniPlayer /> : null}
+            <DotTabBar
+              tabs={TABS}
+              index={tab}
+              onChange={(i) => set({ tab: i })}
+              onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}
+            />
+          </View>
+        </View>
+      </Receding>
+      <PlayerSheet open={player} motion={motion.current} onClosed={onPlayerClosed}>
         <Player onNavigate={fromPlayer} />
       </PlayerSheet>
-      <div id="toast" className={'glass' + (message ? ' on' : '')} role="status">{message || ''}</div>
-    </>
+      <Toast bottom={insets.bottom + chrome + 14} />
+    </View>
+  );
+}
+
+/** One line that says what just happened, above the tab row. */
+function Toast({ bottom }) {
+  const c = useColors();
+  const message = useStore((s) => s.toast);
+  const [text, setText] = React.useState('');
+  const on = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    if (message) setText(message);
+    Animated.spring(on, { toValue: message ? 1 : 0, stiffness: 320, damping: 26, mass: 1, useNativeDriver: true }).start();
+  }, [message, on]);
+  return (
+    <Animated.View pointerEvents="none" accessibilityLiveRegion="polite"
+      style={{ position: 'absolute', left: 0, right: 0, bottom, alignItems: 'center', opacity: on, transform: [{ translateY: on.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }}>
+      <Glass radius={19} style={{ paddingVertical: 9, paddingHorizontal: 16 }}>
+        <Text style={{ ...font.text, fontSize: 13.5, lineHeight: 18, color: c.fg }}>{text}</Text>
+      </Glass>
+    </Animated.View>
   );
 }

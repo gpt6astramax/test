@@ -1,33 +1,22 @@
-// Tap: every button in the app. A React Native Pressable; on the web it sits inside a <label> around a hidden native
-// switch, because on iPhone the only haptic a page gets is the one a real finger tap on such a label plays. The label
-// takes no box of its own (display: contents), so the Pressable lays out as if it were not there.
+// Tap on iOS / Android: a Pressable that ticks through expo-haptics. Tap.web.jsx is the web twin (a <label> around a
+// hidden switch, the only way a web page gets a haptic on iPhone).
 import * as React from 'react';
 import { Pressable } from 'react-native';
-import { tapSwitch, buzz } from './platform';
+import * as Haptics from 'expo-haptics';
 
-const HIDDEN = { position: 'absolute', left: 0, top: 0, width: 1, height: 1, margin: 0, opacity: 0, pointerEvents: 'none' };
+const PRESSED = { opacity: 0.6, transform: [{ scale: 0.97 }] };
 
 export function Tap({ onPress, style, children, label, haptic = true, role = 'button', pressed: pressedStyle, ...rest }) {
-  const ref = React.useRef(null);
-  // react-native-web draws role "button" as a <button>, and a click on a <button> inside a <label> never reaches the
-  // label's switch. So the element stays a <div> and gets its role as a plain attribute.
-  React.useLayoutEffect(() => {
-    const el = ref.current;
-    if (el && el.setAttribute) { el.setAttribute('role', role); if (label) el.setAttribute('aria-label', label); }
-  }, [role, label]);
   return (
-    <label style={{ display: 'contents' }}>
-      {tapSwitch && haptic ? <input type="checkbox" switch="" aria-hidden="true" style={HIDDEN} /> : null}
-      <Pressable
-        ref={ref}
-        onPress={(e) => { if (haptic) buzz(); if (onPress) onPress(e); }}
-        style={({ pressed }) => [style, pressed && (pressedStyle || PRESSED)]}
-        {...rest}
-      >
-        {children}
-      </Pressable>
-    </label>
+    <Pressable
+      accessibilityRole={role}
+      accessibilityLabel={label}
+      onPress={(e) => { if (haptic) Haptics.selectionAsync().catch(() => {}); if (onPress) onPress(e); }}
+      style={({ pressed }) => [style, pressed && (pressedStyle || PRESSED)]}
+      {...rest}
+    >
+      {children}
+    </Pressable>
   );
 }
-const PRESSED = { opacity: 0.6, transform: [{ scale: 0.97 }] };
 export default Tap;
