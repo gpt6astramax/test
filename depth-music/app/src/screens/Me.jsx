@@ -118,7 +118,7 @@ function ChromeSection() {
   return (
     <Section title="播放器升起时的底栏">
       <Picks items={STILL} value={mode} onPick={setChromeMode} />
-      <Fine>下次打开播放器时生效。这两种都完全不碰底栏：它不位移、不缩放、不变淡。第一种是默认，底栏的毛玻璃一直有效。</Fine>
+      <Fine>下次打开播放器时生效。这三种都完全不碰底栏：它不位移、不缩放、不变淡，毛玻璃也不关。第一种是默认。</Fine>
       <Fine>下面是之前试过的做法，留着对照。它们会移动底栏、把它调淡、在播放器期间关掉它的毛玻璃，或让它跟着页面缩小：</Fine>
       <Picks items={EARLIER} value={mode} onPick={setChromeMode} />
     </Section>

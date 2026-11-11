@@ -12,11 +12,11 @@
 //   - what lies under it: transform and opacity. Its blur is either a veil laid over it (glass of fixed radius whose
 //     strength is the opacity() of its backdrop-filter) or, in the 'filter' depth mode, its own filter: blur()
 //     (lib/depth-mode.js says why the first is the default in Chromium);
-//   - the floating chrome (the tab row): by default nothing at all is done to it. It stays where it is, in front of
-//     the player ('top'), and its glass goes on blurring what passes behind it, exactly as in front of a pushed page;
-//     or the veil lies over it ('cover'). The ways that did something to it are still here to compare with: they
-//     moved it, dimmed it, or switched its glass off while the player was up, and that last one is what showed as
-//     the row having no blur for a moment after the player had gone. In the ways that do move it, it leaves by a transform, never by opacity (glass stops blurring as soon
+//   - the floating chrome (the tab row): by default nothing at all is done to it. It stays where it is and the
+//     player covers it in the natural way: the sheet carries a sheet of glass of its own ('under'), which passes over
+//     the row on the way up and uncovers it on the way down. (Or the veil lies over it, 'cover'; or it stays in front
+//     of the player, 'top'.) The ways that did something to it are still here to compare with: they moved it, dimmed
+//     it, or switched its glass off while the player was up. In the ways that do move it, it leaves by a transform, never by opacity (glass stops blurring as soon
 //     as anything it sits in has an opacity below 1, an opacity animation or a filter); 'fade' dims the row's own
 //     parts instead, the glass through opacity() in its backdrop-filter. It is given back the moment the sheet has gone;
 //   - the handle's two halves: a rotation.
@@ -87,6 +87,10 @@ function styles() {
     `@keyframes sh-c-fade{0%,${hold}{--chrome-o:1}${late(AWAY.fade.ret)},100%{--chrome-o:0}}` +
     // the chrome stays, its own blur is off
     `.sh-noglass .dtb-haze{display:none}` +
+    // 'under': the sheet's own glass. Behind the sheet's content (z-index -1 in the sheet's stacking context, so that
+    // it blurs what is behind the sheet and not the sheet's content), as large as the sheet, moving with it. A leaf
+    // of its own, not the panel itself: glass that has glass inside it is drawn as a flattened picture in Safari.
+    `.sheet-glass{position:absolute;inset:0;z-index:-1;pointer-events:none;-webkit-backdrop-filter:blur(${BACK.blur}px);backdrop-filter:blur(${BACK.blur}px)}` +
     // the handle's two halves: straight once the sheet has been pulled a little, bent into the arrow at rest
     `@keyframes sh-hl{0%,${STRAIGHT}{transform:none}${rest}{transform:rotate(${BEND}deg)}}` +
     `@keyframes sh-hr{0%,${STRAIGHT}{transform:none}${rest}{transform:rotate(-${BEND}deg)}}`;
@@ -99,11 +103,12 @@ function styles() {
  * under     ref to the element that lies under the sheet and recedes
  * veil      ref to an element that covers `under` and nothing else: the glass that puts it out of focus
  * aside     ref to the floating chrome
- * asideMode what it does while the player is up: 'cover' | 'top' (nothing at all is done to it: under the veil, or in
- *           front of the player), 'sink' | 'rise' | 'left' | 'fade' (it is outside `under` and leaves),
+ * asideMode what it does while the player is up: 'under' | 'cover' | 'top' (nothing at all is done to it: the sheet's
+ *           own glass passes over it, or the veil lies over it, or it stays in front of the player),
+ *           'sink' | 'rise' | 'left' | 'fade' (it is outside `under` and leaves),
  *           'noglass' (inside `under`, its own blur off meanwhile), 'asis' (inside `under`, left alone)
  */
-export function PlayerSheet({ open, onClosed, under, veil, aside, asideMode = 'top', children }) {
+export function PlayerSheet({ open, onClosed, under, veil, aside, asideMode = 'under', children }) {
   const [state, setState] = React.useState({ mounted: open, gen: 0 });
   const tidy = React.useRef(null);
   const latest = React.useRef(onClosed);
@@ -238,9 +243,9 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
     }
     const onKey = (e) => { if (e.key === 'Escape' && !left.current) gesture.go(1); };
     document.addEventListener('keydown', onKey);
-    // 'cover': the row lies under the veil and under the sheet, so no touch reaches it; the keyboard is kept off it
-    // from here, without touching the row (no inert, no attribute): focus that lands on it is let go again
-    const offRow = asideMode === 'cover' && chrome ? (e) => { if (!left.current && chrome.contains(e.target)) e.target.blur(); } : null;
+    // 'under', 'cover': the row lies under the sheet, so no touch reaches it; the keyboard is kept off it from here,
+    // without touching the row (no inert, no attribute): focus that lands on it is let go again
+    const offRow = (asideMode === 'under' || asideMode === 'cover') && chrome ? (e) => { if (!left.current && chrome.contains(e.target)) e.target.blur(); } : null;
     if (offRow) document.addEventListener('focusin', offRow);
     return () => {
       offChange(); offSettle();
@@ -275,6 +280,7 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
     <div ref={el} className="sheet" role="dialog" aria-label="播放器">
       <div ref={body}>
         <div className="sheet-panel">
+          {asideMode === 'under' ? <i className="sheet-glass" aria-hidden="true" /> : null}
           <label ref={handle} className="sheet-handle" role="button" tabIndex={0} aria-label="收起播放器"
             onClick={(e) => { if (!(e.target.matches && e.target.matches('.hsw'))) close(); }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); close(); } }}>
