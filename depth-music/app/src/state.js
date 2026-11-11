@@ -5,7 +5,7 @@
 import { useSyncExternalStore } from 'react';
 import { TRACKS, byId, mmss } from './data';
 
-export const state = { cur: 't7', t: 96, playing: true, liked: { t1: 1, t8: 1, t4: 1 }, tab: 0, bar: false, player: false, toast: null };
+export const state = { cur: 't7', t: 96, playing: true, liked: { t1: 1, t8: 1, t4: 1 }, tab: 0, bar: false, player: false, playerSeq: 0, toast: null };
 const listeners = new Set();
 const emit = () => listeners.forEach((fn) => fn());
 export function set(patch) { Object.assign(state, patch); emit(); }
@@ -58,7 +58,9 @@ export function toggleLike(id) {
   toast(liked[id] ? '已收藏' : '已取消收藏');
 }
 /** The player: a sheet that comes up from below, whatever is on screen. */
-export function openPlayer(id) { if (id && id !== state.cur) setTrack(id); set({ player: true }); }
+// Every call opens it, even while a player swiped away is still sliding out (it is then replaced by a new one): a track
+// tapped the moment the player lets go of the page plays and opens at the first tap.
+export function openPlayer(id) { if (id && id !== state.cur) setTrack(id); set({ player: true, playerSeq: state.playerSeq + 1 }); }
 export function closePlayer() { set({ player: false }); }
 
 let toastT = 0;

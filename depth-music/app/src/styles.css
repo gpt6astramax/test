@@ -152,7 +152,10 @@ html.back-plain .nav .tap { background: none; border: 0; box-shadow: none; -webk
 .pl-prog { position: absolute; left: 20px; right: 20px; bottom: 0; height: 2px; border-radius: 2px; background: var(--wave-acc, var(--fg)); transform-origin: 0 50%; transform: scaleX(var(--prog)); --prog: 0; pointer-events: none }
 
 /* ---- the player: comes up from below over everything and fills the screen like a page; goes away with a swipe down ---- */
-.sheet { position: absolute; inset: 0; z-index: 20 }
+.sheet { position: absolute; inset: 0; z-index: 20; pointer-events: none }
+/* only the panel takes taps: above it, while it is pulled down or sliding away, they reach the page under it */
+.sheet-panel { pointer-events: auto }
+.sheet.sg-passing .sheet-panel { pointer-events: none }
 .sheet > .sg-body { display: flex; flex-direction: column }
 /* no ground of its own, like every page: only content, over what was there before */
 .sheet-panel { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column }

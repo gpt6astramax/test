@@ -35,6 +35,7 @@ export default function App() {
   const tab = useStore((s) => s.tab);
   const bar = useStore((s) => s.bar);
   const player = useStore((s) => s.player);
+  const playerSeq = useStore((s) => s.playerSeq);
   const message = useStore((s) => s.toast);
   const stacks = React.useRef([]);
   const under = React.useRef(null);
@@ -76,6 +77,7 @@ export default function App() {
 
   // from the player: close it, then open the page in the tab underneath
   const fromPlayer = (name, params) => { pending.current = [name, params]; closePlayer(); };
+  React.useEffect(() => { pending.current = null; }, [playerSeq]);   // opened again before it had gone: the page waits no more
   const onPlayerClosed = () => {
     set({ player: false });
     const p = pending.current;
@@ -110,7 +112,7 @@ export default function App() {
       {/* the glass that puts the pages out of focus behind the player, in the 'veil' depth mode (ui/PlayerSheet) */}
       <div className="sheet-veil" ref={veil} />
       {chromeEl}
-      <PlayerSheet open={player} under={under} veil={veil} onCover={onCover} onClosed={onPlayerClosed}>
+      <PlayerSheet open={player} seq={playerSeq} under={under} veil={veil} onCover={onCover} onClosed={onPlayerClosed}>
         <Player onNavigate={fromPlayer} />
       </PlayerSheet>
       <div id="toast" className={'glass' + (message ? ' on' : '')} role="status">{message || ''}</div>

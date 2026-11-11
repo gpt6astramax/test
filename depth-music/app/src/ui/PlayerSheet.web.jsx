@@ -74,26 +74,37 @@ function styles() {
  * onCover   called every frame with how far up the sheet is, 0 (gone) .. 1 (up): for what belongs to the screen it
  *           covers but is not in `under` (the tab row)
  */
-export function PlayerSheet({ open, onClosed, under, veil, onCover, children }) {
+export function PlayerSheet({ open, seq = 0, onClosed, under, veil, onCover, children }) {
   const [state, setState] = React.useState({ mounted: open, gen: 0 });
   const tidy = React.useRef(null);
   const latest = React.useRef(onClosed);
   latest.current = onClosed;
+  const away = React.useRef(true);                              // no surface, or the one there is pulled down or leaving
+  const opened = React.useRef(false);
+  const newest = React.useRef(0);                               // the generation of the surface last asked for
   React.useEffect(() => {
+    const was = opened.current;
+    opened.current = open;
     if (!open) return;
+    if (was && !away.current) return;                           // asked again while it is up: it stays
     if (tidy.current) { tidy.current.cancel(); tidy.current = null; }
-    setState((s) => ({ mounted: true, gen: s.gen + 1 }));       // a new surface, even if the last one is still waiting to go
-  }, [open]);
+    away.current = false;
+    const gen = ++newest.current;
+    setState({ mounted: true, gen });                           // a new surface, even if the last one is still sliding out
+  }, [open, seq]);
   React.useEffect(() => () => { if (tidy.current) tidy.current.cancel(); }, []);
   if (!state.mounted) return null;
-  const onGone = () => {
+  // Only the newest surface may say the player has gone: one sliding out can come to rest just after a new one was
+  // asked for, before it is in place, and would close the new one.
+  const onGone = (gen) => {
+    if (gen !== newest.current) return;
     if (latest.current) latest.current();
     tidy.current = whenQuiet(() => { tidy.current = null; setState((s) => ({ ...s, mounted: false })); });
   };
-  return <Surface key={state.gen} open={open} under={under} veil={veil} onCover={onCover} onGone={onGone}>{children}</Surface>;
+  return <Surface key={state.gen} open={open} under={under} veil={veil} onCover={onCover} onGone={() => onGone(state.gen)} onAway={(a) => { if (state.gen === newest.current) away.current = a; }}>{children}</Surface>;
 }
 
-function Surface({ open, onGone, under, veil, onCover, children }) {
+function Surface({ open, onGone, onAway, under, veil, onCover, children }) {
   styles();
   const el = React.useRef(null);
   const body = React.useRef(null);
@@ -104,6 +115,8 @@ function Surface({ open, onGone, under, veil, onCover, children }) {
   latest.current = onGone;
   const coverTo = React.useRef(onCover);
   coverTo.current = onCover;
+  const awayTo = React.useRef(onAway);
+  awayTo.current = onAway;
 
   React.useLayoutEffect(() => {
     const u = under && under.current;
@@ -154,12 +167,17 @@ function Surface({ open, onGone, under, veil, onCover, children }) {
       if (u && u.inert) u.inert = false;
       cover(0);                                               // what it covered is whole again at once
       el.current.inert = true;
+      if (awayTo.current) awayTo.current(true);
       latest.current();
     };
     const offChange = gesture.on('change', (p) => {
       if (!tied && flat !== p > 0.03) { flat = p > 0.03; handle.current.classList.toggle('flat', flat); }
       if (entering && p > 0.02) entered();                   // the finger took the sheet while it was coming up
-      if (gesture.passing && u && u.inert) u.inert = false;
+      // The page under it takes taps as soon as the sheet is pulled off the top (where it shows, past the panel: the
+      // sheet's own box lets taps through, styles.css), not only once the sheet has gone.
+      const off = !entering && (p > 0.02 || gesture.passing);
+      if (u && !left.current && u.inert === off) u.inert = !off;
+      if (awayTo.current && !left.current) awayTo.current(off);
       if (!entering && !left.current) cover(1 - Math.min(1, (1 + OVER) * Math.max(0, p)));
       if (tied || entering) return;
       const k = Math.min(1, (1 + OVER) * Math.max(0, p)), L = (from, to) => from + (to - from) * k;
@@ -171,6 +189,21 @@ function Surface({ open, onGone, under, veil, onCover, children }) {
       if (v) veilTo(veilAt(k));
     });
     const offSettle = gesture.on('settle', (side) => { if (side === 1) gone(); });
+    // A sheet that has gone down out of sight and is then left alone has gone, whether or not its scroller reported
+    // coming to rest: on a phone it can stop a pixel or two short of the end (sizes in fractions of a pixel) and never
+    // say so. The app would then believe the player still up, and a tap on a track would only switch the track.
+    let fingers = 0, idleT = 0;
+    const lookLater = () => {
+      clearTimeout(idleT);
+      idleT = setTimeout(() => {
+        if (left.current || entering || fingers || gesture.p < 0.9) return;
+        if (gesture.p < 1) gesture.go(1);
+        gone();
+      }, 450);
+    };
+    const onTouch = (e) => { fingers = e.touches.length; if (!fingers) lookLater(); else clearTimeout(idleT); };
+    ['touchstart', 'touchend', 'touchcancel'].forEach((t) => document.addEventListener(t, onTouch, { passive: true, capture: true }));
+    const offIdle = gesture.on('change', lookLater);
     if (reduced()) { cover(1); entered(); }
     else {
       // they recede on the entrance's clock and hold their end until the ties take over
@@ -191,7 +224,9 @@ function Surface({ open, onGone, under, veil, onCover, children }) {
     const onKey = (e) => { if (e.key === 'Escape' && !left.current) gesture.go(1); };
     document.addEventListener('keydown', onKey);
     return () => {
-      offChange(); offSettle();
+      offChange(); offSettle(); offIdle();
+      clearTimeout(idleT);
+      ['touchstart', 'touchend', 'touchcancel'].forEach((t) => document.removeEventListener(t, onTouch, { passive: true, capture: true }));
       document.removeEventListener('keydown', onKey);
       cancelAnimationFrame(coverRaf);
       cover(0);
