@@ -1,5 +1,6 @@
 // DotTabBar on iOS / Android: the bottom tab row. Bare icons, the current one in full ink with a dot under it, over a
-// slim capsule of blur with no fill, border or shadow of its own. (DotTabBar.web.jsx is the web twin.)
+// capsule of blur with no fill, border or shadow of its own: the row's own box with round ends. (feather: the blur
+// weakens outwards in steps instead.) DotTabBar.web.jsx is the web twin.
 //
 //   <DotTabBar
 //     tabs={[{ key: 'home', label: '发现', icon: 'compass' }, …]}      // icon: a name from ui/icon-paths, or an element
@@ -13,7 +14,8 @@
 //   trails a finger dragged along the row. Held, it is pulled into a flat ellipse; moving, it stretches with its speed.
 //   The same spring as the web's glider: stiffness 520 / damping 38 while held, 300 / 22 once let go.
 // - Every tab the dot passes ticks (expo-haptics).
-// - Put it in a container at the bottom of the screen. Props: height (default 52), haze (default true), style.
+// - Put it in a container at the bottom of the screen. Props: height (default 52), haze (default true), feather
+//   (default false), style.
 import * as React from 'react';
 import { Animated, PanResponder, Platform, StyleSheet, View } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -23,10 +25,12 @@ import { useColors } from './theme';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const DOT = 6;
-// the haze clears outwards in steps (a blur cannot be masked here as it is on the web): [inset, height, intensity]
+// Feathered, the haze clears outwards in steps (a blur cannot be masked here as it is on the web):
+// [inset, height, intensity]. Android has no real blur, so one step is all it can show.
 const STEPS = Platform.OS === 'ios' ? [[-14, 88, 5], [-4, 66, 12], [6, 46, 30]] : [[6, 46, 24]];
+const INTENSITY = Platform.OS === 'ios' ? 30 : 24;
 
-export function DotTabBar({ tabs, index = 0, onChange, onReselect, height = 52, haze = true, style }) {
+export function DotTabBar({ tabs, index = 0, onChange, onReselect, height = 52, haze = true, feather = false, style }) {
   const c = useColors();
   const n = tabs.length;
   const x = React.useRef(new Animated.Value(0)).current;
@@ -108,7 +112,7 @@ export function DotTabBar({ tabs, index = 0, onChange, onReselect, height = 52, 
       style={[{ height, flexDirection: 'row' }, style]}
       {...api.pan.panHandlers}
     >
-      {haze ? STEPS.map(([inset, h, intensity]) => (
+      {haze ? (feather ? STEPS : [[0, height, INTENSITY]]).map(([inset, h, intensity]) => (
         <View key={h} pointerEvents="none" style={{ position: 'absolute', left: inset, right: inset, top: (height - h) / 2, height: h, borderRadius: h / 2, overflow: 'hidden' }}>
           <BlurView intensity={intensity} tint={c.dark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         </View>

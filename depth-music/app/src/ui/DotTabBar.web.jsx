@@ -1,5 +1,6 @@
-// DotTabBar: the bottom tab row. Bare icons, the current one in full ink with a dot under it, over a slim capsule of
-// blur that clears in every direction and has no edge, fill, border or shadow of its own.
+// DotTabBar: the bottom tab row. Bare icons, the current one in full ink with a dot under it, over a capsule of blur
+// with no fill, border or shadow of its own: the row's own box with round ends, blurred evenly up to its edge.
+// (feather: the blur clears gradually in every direction instead, so the capsule has no edge at all.)
 //
 //   <DotTabBar
 //     tabs={[{ key: 'home', label: '发现', icon: <Icon name="compass" size={25} /> }, …]}
@@ -14,8 +15,9 @@
 //   is pulled into a flat ellipse; moving, it stretches along its path the faster it goes.
 // - Self-contained: it brings its own CSS. Colours come from CSS variables with fallbacks, so it follows a theme:
 //     --dtb-fg (current icon and dot, default var(--fg) or #111), --dtb-muted (other icons), --dtb-blur (default 18px)
-// - Put it in a positioned container at the bottom of the screen; leave ~26 px below it so the blur can clear before
-//   the edge. Props: height (default 52), haze (default true), style, className.
+// - Put it in a positioned container at the bottom of the screen. Props: height (default 52), haze (default true),
+//   feather (default false; with it, leave ~26 px below the row so the blur can clear before the screen's edge),
+//   style, className.
 import * as React from 'react';
 import { attachGlider } from './glider';
 import { tapSwitch } from './platform';
@@ -29,11 +31,13 @@ const CSS = `
 .dtb-ink::after{content:"";position:absolute;left:50%;top:0;width:6px;height:6px;margin-left:-3px;border-radius:50%;
   background:var(--dtb-fg,var(--fg,#111214));transform:scale(var(--sx,1),var(--sy,1))}
 .dtb-switch{position:absolute;left:0;top:0;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
-/* the haze: only blur. A slim capsule centred on the icons is fully blurred; from there it clears in every direction
-   (two half discs for the ends, a band between them). It keeps a layer of its own (translateZ), so that layers coming
-   and going behind it do not have it rebuilt, which on iOS shows as the blur dropping out for a frame. */
-.dtb-haze{position:absolute;z-index:-1;left:-16px;right:-16px;top:50%;height:100px;margin-top:-50px;pointer-events:none;transform:translateZ(0);
-  -webkit-backdrop-filter:blur(var(--dtb-blur,18px));backdrop-filter:blur(var(--dtb-blur,18px));
+/* the haze: only blur, the row's own box with round ends. It keeps a layer of its own (translateZ), so that layers
+   coming and going behind it do not have it rebuilt, which on iOS shows as the blur dropping out for a frame. */
+.dtb-haze{position:absolute;z-index:-1;inset:0;border-radius:999px;pointer-events:none;transform:translateZ(0);
+  -webkit-backdrop-filter:blur(var(--dtb-blur,18px));backdrop-filter:blur(var(--dtb-blur,18px))}
+/* feathered: a slim capsule centred on the icons is fully blurred; from there it clears in every direction (two half
+   discs for the ends, a band between them) */
+.dtb-haze.dtb-feather{inset:auto;left:-16px;right:-16px;top:50%;height:100px;margin-top:-50px;border-radius:0;
   --dtb-m:radial-gradient(circle 50px at 100% 50%,#000 22px,rgb(0 0 0/.45) 35px,transparent 50px) left center/50px 100% no-repeat,
           radial-gradient(circle 50px at 0 50%,#000 22px,rgb(0 0 0/.45) 35px,transparent 50px) right center/50px 100% no-repeat,
           linear-gradient(to bottom,transparent 0,rgb(0 0 0/.45) 15px,#000 28px,#000 calc(100% - 28px),rgb(0 0 0/.45) calc(100% - 15px),transparent 100%) center/calc(100% - 100px) 100% no-repeat;
@@ -49,7 +53,7 @@ function inject() {
   document.head.appendChild(st);
 }
 
-export function DotTabBar({ tabs, index = 0, onChange, onReselect, height = 52, haze = true, style, className }) {
+export function DotTabBar({ tabs, index = 0, onChange, onReselect, height = 52, haze = true, feather = false, style, className }) {
   inject();
   const bar = React.useRef(null);
   const glider = React.useRef(null);
@@ -70,7 +74,7 @@ export function DotTabBar({ tabs, index = 0, onChange, onReselect, height = 52, 
   return (
     <label ref={bar} className={'dtb' + (className ? ' ' + className : '')} role="tablist" style={{ height, ...style }}>
       {tapSwitch ? <input type="checkbox" switch="" className="dtb-switch" aria-hidden="true" /> : null}
-      {haze ? <i className="dtb-haze" aria-hidden="true" /> : null}
+      {haze ? <i className={'dtb-haze' + (feather ? ' dtb-feather' : '')} aria-hidden="true" /> : null}
       <i className="dtb-ink" data-gl-ink="" aria-hidden="true" />
       {tabs.map((t) => (
         <span key={t.key} className="dtb-item" data-gl-item="" role="tab" tabIndex={0} aria-label={t.label}>
