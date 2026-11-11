@@ -18,6 +18,8 @@ export function attachGlider(bar, opt) {
   const dot = !!opt.dot;
   let index = opt.index || 0, seg = 0, held = false, pid = null, startIndex = 0;
   let x = 0, v = 0, target = 0, hold = 0, raf = 0, last = 0;       // position, speed, where it is heading, how "held" it looks
+  let ran = 0;                                                     // when the loop last ran a frame (performance.now())
+  let freeSince = 0;                                               // when the finger let go (0: held, or at rest)
 
   const measure = () => { seg = (bar.clientWidth - inset * 2) / n; ink.style.width = seg + 'px'; };
   function draw() {
@@ -32,19 +34,33 @@ export function attachGlider(bar, opt) {
     }
   }
   function tick(now) {
-    const dt = Math.min(0.032, (now - last) / 1000) || 0.016;
+    raf = 0;
+    ran = performance.now();
+    // a frame's time can come out earlier than the moment the loop was started (rAF stamps the frame's start): never a
+    // step backwards, never more than two frames at once
+    const dt = clamp((now - last) / 1000, 0.004, 0.032);
     last = now;
     const k = held ? 520 : 300, c = held ? 38 : 22;                // held: close behind the finger; let go: a springy return
     for (let i = 0; i < 4; i++) { v += (k * (target - x) - c * v) * dt / 4; x += v * dt / 4; }
     hold += ((held ? 1 : 0) - hold) * Math.min(1, dt * 14);
-    if (!held && Math.abs(target - x) < 0.05 && Math.abs(v) < 2 && hold < 0.01) { x = target; v = 0; hold = 0; raf = 0; }
+    // at rest; or let go well over a second ago and still not there (whatever slowed it): put it in place
+    const late = !held && freeSince && ran - freeSince > 1200;
+    if (!held && ((Math.abs(target - x) < 0.05 && Math.abs(v) < 2 && hold < 0.01) || late)) { x = target; v = 0; hold = 0; freeSince = 0; }
     else raf = requestAnimationFrame(tick);
     draw();
   }
+  // Make sure the loop runs. A frame that was asked for can be skipped (the page hidden for a moment, an app
+  // switch): a loop that waits for it would never run again, so a stale request is replaced.
+  function run() {
+    if (raf && performance.now() - ran < 100) return;
+    cancelAnimationFrame(raf);
+    last = performance.now();
+    raf = requestAnimationFrame(tick);
+  }
   function to(t, jump) {
     target = t;
-    if (jump || reduced()) { cancelAnimationFrame(raf); raf = 0; x = t; v = 0; hold = held ? 1 : 0; draw(); }
-    else if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); }
+    if (jump || reduced()) { cancelAnimationFrame(raf); raf = 0; x = t; v = 0; hold = held ? 1 : 0; freeSince = 0; draw(); }
+    else run();
   }
   const mark = () => items.forEach((el, i) => { el.toggleAttribute('data-on', i === index); el.setAttribute('aria-selected', String(i === index)); });
   function at(e) {
@@ -54,21 +70,37 @@ export function attachGlider(bar, opt) {
   function choose(i) { if (i === index) return; index = i; mark(); buzz(); opt.onSelect && opt.onSelect(i); }
 
   function down(e) {
-    if (e.button || held) return;
-    measure(); held = true; pid = e.pointerId; startIndex = index;
+    if (e.button) return;
+    // a new finger while one is still held: the end of the last one was never heard (it can go astray on iOS); it is
+    // let go first, so the control is never stuck under a finger that has gone
+    if (held) { if (e.pointerId === pid) return; release(); }
+    measure(); held = true; pid = e.pointerId; startIndex = index; freeSince = 0;
+    document.addEventListener('pointerup', end, true);
+    document.addEventListener('pointercancel', end, true);
     // a touch stays with the bar it went down on; only the mouse needs capturing, to keep a drag that leaves the bar
     if (e.pointerType === 'mouse') { try { bar.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ } }
     const a = at(e); to(a.pos); choose(a.i);
   }
   function move(e) { if (!held || e.pointerId !== pid) return; const a = at(e); to(a.pos); choose(a.i); }
+  // Let go: the pill springs back onto the chosen item.
+  function release() {
+    held = false;
+    freeSince = performance.now();
+    document.removeEventListener('pointerup', end, true);
+    document.removeEventListener('pointercancel', end, true);
+    to(index * seg);
+  }
+  // The finger's end is heard on the document too, not only on the bar: wherever it lands, it is never missed.
   function end(e) {
     if (!held || e.pointerId !== pid) return;
-    held = false;
     const same = e.type === 'pointerup' && index === startIndex && at(e).i === index;
-    to(index * seg);
+    release();
     payBuzz();
     if (same && opt.onReselect) opt.onReselect(index);
   }
+  // back from the background with the pill on its way: let it finish
+  const onVisible = () => { if (document.visibilityState === 'visible' && (held || x !== target || hold)) run(); };
+  document.addEventListener('visibilitychange', onVisible);
   function key(e) {
     const i = items.indexOf(e.target);
     if (i === -1 || (e.key !== 'Enter' && e.key !== ' ')) return;
@@ -89,6 +121,9 @@ export function attachGlider(bar, opt) {
     /** Follow a choice made elsewhere. */
     set(i) { if (i === index || held) return; index = i; mark(); measure(); to(index * seg); },
     destroy() {
+      document.removeEventListener('pointerup', end, true);
+      document.removeEventListener('pointercancel', end, true);
+      document.removeEventListener('visibilitychange', onVisible);
       cancelAnimationFrame(raf);
       if (ro) ro.disconnect();
       bar.removeEventListener('pointerdown', down);
