@@ -52,10 +52,14 @@ document.documentElement.setAttribute('data-theme', 'light');
 <title>景深翻页</title>
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/favicon.png">
-  <script type="module" crossorigin src="./assets/index-xJO34-Py.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-CyXCioDK.css">
+  <script type="module" crossorigin src="./assets/index-DytUbSIb.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-1es3g2Ul.css">
 </head>
 <body>
+<!-- Safari (iOS 26, in a tab) lays a blur of its own over the page under the status bar. It leaves it out when a
+     fixed element of a solid colour lies across the top edge: this strip, the page's ground, as tall as the top safe
+     area. Only in Safari's tabs: the home-screen app has no such blur, and keeps the status bar clear. -->
+<div class="edge-top" aria-hidden="true"></div>
 <div class="app" id="app"></div>
 </body>
 </html>

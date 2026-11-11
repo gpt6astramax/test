@@ -54,6 +54,10 @@ document.documentElement.setAttribute('data-theme', 'light');
 <link rel="icon" href="icons/favicon.png">
 </head>
 <body>
+<!-- Safari (iOS 26, in a tab) lays a blur of its own over the page under the status bar. It leaves it out when a
+     fixed element of a solid colour lies across the top edge: this strip, the page's ground, as tall as the top safe
+     area. Only in Safari's tabs: the home-screen app has no such blur, and keeps the status bar clear. -->
+<div class="edge-top" aria-hidden="true"></div>
 <div class="app" id="app"></div>
 <script type="module" src="./main.jsx"></script>
 </body>
