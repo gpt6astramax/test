@@ -1,0 +1,49 @@
+{
+ "version": "827eada01caf",
+ "built": "2026-11-11T19:38:56.508Z",
+ "medium": 0,
+ "urgent": 0,
+ "note": "",
+ "files": [
+  {
+   "path": "index.html",
+   "size": 4462,
+   "sha256": "966fb224e90ba14d9e1f98fd15b2fe23fdedd1ff246e757652636205a05c18c3"
+  },
+  {
+   "path": "assets/index-DGGerWyy.css",
+   "size": 9752,
+   "sha256": "2ced128721fc404006e16cea63a19062cde2356716bec3c4706a996394c93372"
+  },
+  {
+   "path": "assets/index-lqfaPt2j.js",
+   "size": 81872,
+   "sha256": "221476a54cff801d7e0ee53af1e978da36a1975ebb4812cab1945122838c0542"
+  },
+  {
+   "path": "assets/jost-latin-300-normal-DkBQXsFU.woff2",
+   "size": 9876,
+   "sha256": "4755701d1a52180592b7619acd5f7f7852beb54adb7ee282ea8ad1d1bcfb2ae6"
+  },
+  {
+   "path": "assets/jost-latin-400-normal-q-RKOgPK.woff2",
+   "size": 9404,
+   "sha256": "f94cffda16515fbb1667a2662d6b46f5610a942fd02fe88d67ff98f776288962"
+  },
+  {
+   "path": "assets/jost-latin-600-normal-C497H-z9.woff2",
+   "size": 10480,
+   "sha256": "d0487d684596edca7f495d2495ee77a55448740930023c305e8a683b1daefda2"
+  },
+  {
+   "path": "assets/rolldown-runtime-BWaJ3C7D.js",
+   "size": 911,
+   "sha256": "d0e9044430006c5bb48f477501a5af465f0a6377d2fcd7495aa215b8b75aaee3"
+  },
+  {
+   "path": "assets/vendor-BummOSt8.js",
+   "size": 316445,
+   "sha256": "f5e288e7518ec6a6cb1ad6b09b04cb58197db1bd62f92e07c90ad7212c0b477c"
+  }
+ ]
+}

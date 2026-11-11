@@ -4,11 +4,12 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import react from '@vitejs/plugin-react';
+import appManifest from './scripts/app-manifest.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 export default {
-  plugins: [react()],
+  plugins: [react(), appManifest(path.resolve(here, 'release.json'))],
   root: path.resolve(here, 'src'),
   base: '',
   publicDir: path.resolve(here, 'static'),
@@ -26,6 +27,13 @@ export default {
     outDir: path.resolve(here, '../public'),
     assetsInlineLimit: 0,
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // libraries (React, react-native-web, ...) in a chunk of their own: they rarely change, so the app's updates
+        // (see scripts/app-manifest.mjs) usually download only the small app chunk
+        manualChunks: (id) => (id.includes('node_modules') ? 'vendor' : undefined),
+      },
+    },
   },
   server: { host: true },
 };

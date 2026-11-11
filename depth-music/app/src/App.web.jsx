@@ -18,6 +18,7 @@ import Player from './screens/Player';
 import { useStore, set, closePlayer } from './state';
 import { ChromeCover } from './lib/chrome-cover';
 import { applyBackStyle } from './lib/back-style';
+import { UpdateNotice } from './ui/UpdateNotice';
 
 applyBackStyle();                               // before the first paint of any page
 
@@ -113,6 +114,7 @@ export default function App() {
         <Player onNavigate={fromPlayer} />
       </PlayerSheet>
       <div id="toast" className={'glass' + (message ? ' on' : '')} role="status">{message || ''}</div>
+      <UpdateNotice />
     </>
   );
 }
