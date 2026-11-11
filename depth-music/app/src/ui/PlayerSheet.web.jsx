@@ -6,6 +6,10 @@
 // scrolling, so it follows the finger and snaps like a system sheet. It comes in with enter(), an animation and not
 // a gesture. What lies under it drops back out of focus, tied to the sheet's own scroll timeline.
 //
+// The floating chrome (the tab row) is not part of what goes out of focus: it sinks out of the screen as the player
+// comes up and returns as the player goes. Its blur must never sit inside something that is itself blurred: in
+// Safari a backdrop blur inside a filtered ancestor sees nothing behind it and shows as clear glass.
+//
 // As in the page stack, nothing is changed on what lies under the sheet at the moment a transition ends: the tie to
 // the sheet is made once, the entrance is one animation laid over it, and after the sheet has gone it stays where it
 // is (off screen, taking no touches) until things are quiet. Only then is it unmounted and the tie taken off.
@@ -19,9 +23,11 @@ import { reduced, supportsTimeline, tapSwitch } from './platform';
 const ScrollGesture = window.ScrollGesture;
 const OVER = 0.1;                  // the commit point lies this far below the screen's edge
 const MS = 620, EASE = 'cubic-bezier(.2,.86,.24,1)';
+const SINK = 120;                  // px the chrome sinks by
+const RETURN = 0.35;               // the chrome starts to return once the sheet has been pulled this far down
 const BEND = 16;                   // degrees each half of the handle is turned to make the arrow
 const STRAIGHT = '94%';            // timeline point (100% = at rest) from which the handle is a straight line
-const FRONT_FRAME = { transform: 'none', filter: 'blur(0px)', opacity: 1 };
+const FRONT_FRAME = { transform: 'none', filter: 'none', opacity: 1 };            // in focus: no filter at all
 const BACK_FRAME = { transform: `translateY(${BACK.y}%) scale(${BACK.s})`, filter: `blur(${BACK.blur}px)`, opacity: BACK.o };
 
 let styled = false;
@@ -33,7 +39,9 @@ function styles() {
   st.setAttribute('data-player-sheet', '');
   st.textContent =
     `.app{--sh-t:translateY(${BACK.y}%) scale(${BACK.s});--sh-blur:${BACK.blur}px;--sh-o:${BACK.o}}` +
-    `@keyframes sh-f{0%,${hold}{transform:none;filter:blur(0px);opacity:1}100%{transform:var(--sh-t);filter:blur(var(--sh-blur));opacity:var(--sh-o)}}` +
+    `@keyframes sh-f{0%,${hold}{transform:none;filter:none;opacity:1}100%{transform:var(--sh-t);filter:blur(var(--sh-blur));opacity:var(--sh-o)}}` +
+    `@keyframes sh-c{0%,${hold}{transform:none;opacity:1}${(100 * (1 - RETURN / (1 + OVER))).toFixed(2)}%,100%{transform:translateY(${SINK}px);opacity:0}}` +
+    `.sh-sunk{transform:translateY(${SINK}px);opacity:0}` +
     // the handle's two halves: straight once the sheet has been pulled a little, bent into the arrow at rest
     `@keyframes sh-hl{0%,${STRAIGHT}{transform:none}100%{transform:rotate(${BEND}deg)}}` +
     `@keyframes sh-hr{0%,${STRAIGHT}{transform:none}100%{transform:rotate(-${BEND}deg)}}`;
@@ -44,8 +52,9 @@ function styles() {
  * open      whether the player should be showing
  * onClosed  called as soon as it has gone (swiped down, or closed from outside and done sliding)
  * under     ref to the element that lies under the sheet and recedes
+ * aside     ref to the floating chrome, which sinks out of the screen while the player is up
  */
-export function PlayerSheet({ open, onClosed, under, children }) {
+export function PlayerSheet({ open, onClosed, under, aside, children }) {
   const [state, setState] = React.useState({ mounted: open, gen: 0 });
   const tidy = React.useRef(null);
   const latest = React.useRef(onClosed);
@@ -61,10 +70,10 @@ export function PlayerSheet({ open, onClosed, under, children }) {
     if (latest.current) latest.current();
     tidy.current = whenQuiet(() => { tidy.current = null; setState((s) => ({ ...s, mounted: false })); });
   };
-  return <Surface key={state.gen} open={open} under={under} onGone={onGone}>{children}</Surface>;
+  return <Surface key={state.gen} open={open} under={under} aside={aside} onGone={onGone}>{children}</Surface>;
 }
 
-function Surface({ open, onGone, under, children }) {
+function Surface({ open, onGone, under, aside, children }) {
   styles();
   const el = React.useRef(null);
   const body = React.useRef(null);
@@ -79,7 +88,13 @@ function Surface({ open, onGone, under, children }) {
     const gesture = ScrollGesture(el.current, { driver: getDriver(), axis: 'y', sides: [1], cssVar: null, body: body.current, overshoot: OVER });
     g.current = gesture;
     const tied = supportsTimeline && !!gesture.timeline;
-    let clock = null;
+    const a = aside && aside.current;
+    let clock = null, clockA = null;
+    const dropClocks = () => { if (clock) { clock.cancel(); clock = null; } if (clockA) { clockA.cancel(); clockA = null; } };
+    if (a) {
+      a.inert = true;
+      if (tied) { a.style.animation = 'sh-c linear both'; a.style.animationTimeline = gesture.timeline; } else a.classList.add('sh-sunk');
+    }
     // What lies under is tied to the sheet from the start: it comes back into focus as the sheet is pulled down.
     if (u) {
       u.classList.add('sh-back');
@@ -94,24 +109,32 @@ function Surface({ open, onGone, under, children }) {
       if (left.current) return;
       left.current = true;
       if (u) u.inert = false;
+      if (a) a.inert = false;
       el.current.inert = true;
       latest.current();
     };
     const offChange = gesture.on('change', (p) => {
       if (!tied && flat !== p > 0.03) { flat = p > 0.03; handle.current.classList.toggle('flat', flat); }
-      if (!u) return;
-      if (clock && p > 0.02) { clock.cancel(); clock = null; }       // the finger took the sheet while it was coming up
-      if (gesture.passing && u.inert) u.inert = false;
-      if (tied || clock) return;
-      const k = Math.min(1, (1 + OVER) * Math.max(0, p)), L = (a, b) => a + (b - a) * k;
-      u.style.transform = `translateY(${L(BACK.y, 0)}%) scale(${L(BACK.s, 1)})`;
-      u.style.filter = `blur(${L(BACK.blur, 0)}px)`;
-      u.style.opacity = String(L(BACK.o, 1));
+      if ((clock || clockA) && p > 0.02) dropClocks();               // the finger took the sheet while it was coming up
+      if (gesture.passing) { if (u && u.inert) u.inert = false; if (a && a.inert) a.inert = false; }
+      if (tied || clock || clockA) return;
+      const k = Math.min(1, (1 + OVER) * Math.max(0, p)), L = (from, to) => from + (to - from) * k;
+      if (u) {
+        u.style.transform = `translateY(${L(BACK.y, 0)}%) scale(${L(BACK.s, 1)})`;
+        u.style.filter = L(BACK.blur, 0) > 0.05 ? `blur(${L(BACK.blur, 0)}px)` : 'none';
+        u.style.opacity = String(L(BACK.o, 1));
+      }
+      if (a) {
+        const v = Math.max(0, Math.min(1, (k - RETURN) / (1 - RETURN)));      // how far the chrome is back
+        a.style.transform = `translateY(${(SINK * (1 - v)).toFixed(1)}px)`;
+        a.style.opacity = String(v);
+      }
     });
     const offSettle = gesture.on('settle', (side) => { if (side === 1) gone(); });
     if (!reduced()) {
       // it recedes on the entrance's clock, by an animation laid over the tie; it runs out by itself
       if (u) { clock = u.animate([FRONT_FRAME, BACK_FRAME], { duration: MS, easing: EASE }); clock.onfinish = () => { clock = null; }; }
+      if (a) { clockA = a.animate([{ transform: 'none', opacity: 1 }, { transform: `translateY(${SINK}px)`, opacity: 0 }], { duration: MS * 0.55, easing: EASE }); clockA.onfinish = () => { clockA = null; }; }
       gesture.enter(1, { duration: MS, easing: EASE, travel: 1 / (1 + OVER) });
     }
     const onKey = (e) => { if (e.key === 'Escape' && !left.current) gesture.go(1); };
@@ -119,7 +142,7 @@ function Surface({ open, onGone, under, children }) {
     return () => {
       offChange(); offSettle();
       document.removeEventListener('keydown', onKey);
-      if (clock) clock.cancel();
+      dropClocks();
       gesture.destroy();
       g.current = null;
       if (u) {
@@ -127,13 +150,18 @@ function Surface({ open, onGone, under, children }) {
         u.classList.remove('sh-back');
         u.inert = false;
       }
+      if (a) {
+        ['animation', 'animation-timeline', 'transform', 'opacity'].forEach((k) => a.style.removeProperty(k));
+        a.classList.remove('sh-sunk');
+        a.inert = false;
+      }
     };
   }, []);                                                        // eslint-disable-line react-hooks/exhaustive-deps
 
   // closed from outside: slide down first; it is unmounted later, like after a swipe
   React.useEffect(() => {
     if (open || !g.current || left.current) return;
-    if (reduced()) { left.current = true; if (under && under.current) under.current.inert = false; latest.current(); }
+    if (reduced()) { left.current = true; if (under && under.current) under.current.inert = false; if (aside && aside.current) aside.current.inert = false; latest.current(); }
     else g.current.go(1);
   }, [open]);                                                    // eslint-disable-line react-hooks/exhaustive-deps
 

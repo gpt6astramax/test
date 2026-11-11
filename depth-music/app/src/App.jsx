@@ -6,7 +6,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { StatusBar } from 'expo-status-bar';
 import { DepthStackView } from './nav/DepthStackView';
 import { DotTabBar } from './ui/DotTabBar';
-import { PlayerSheet, Receding, sheetMotion } from './ui/PlayerSheet';
+import { PlayerSheet, Receding, Sinking, sheetMotion } from './ui/PlayerSheet';
 import { MiniPlayer } from './ui/MiniPlayer';
 import { Glass } from './ui/Glass';
 import { ThemeProvider, useColors } from './ui/theme';
@@ -79,19 +79,20 @@ function App() {
             <DepthStackView key={t.key} ref={(r) => { stacks.current[i] = r; }} active={tab === i} label={t.label} root={t.root} screens={SCREENS} bottom={chrome} />
           ))}
         </View>
-        {/* above the home indicator and clear of the screen's edge: the tab row's blur ends above it */}
-        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom - 4, 26), alignItems: 'center' }}>
-          <View pointerEvents="box-none" style={{ width: '100%', maxWidth: COLUMN, paddingHorizontal: GUTTER, gap: 8 }}>
-            {bar ? <MiniPlayer /> : null}
-            <DotTabBar
-              tabs={TABS}
-              index={tab}
-              onChange={(i) => set({ tab: i })}
-              onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}
-            />
-          </View>
-        </View>
       </Receding>
+      {/* The floating chrome, above the home indicator. It is not part of what goes out of focus behind the player:
+          it sinks out of the screen while the player is up. */}
+      <Sinking motion={motion.current} inert={player} style={{ position: 'absolute', left: 0, right: 0, bottom: Math.max(insets.bottom - 4, 26), alignItems: 'center' }}>
+        <View pointerEvents="box-none" style={{ width: '100%', maxWidth: COLUMN, paddingHorizontal: GUTTER, gap: 8 }}>
+          {bar ? <MiniPlayer /> : null}
+          <DotTabBar
+            tabs={TABS}
+            index={tab}
+            onChange={(i) => set({ tab: i })}
+            onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}
+          />
+        </View>
+      </Sinking>
       <PlayerSheet open={player} motion={motion.current} onClosed={onPlayerClosed}>
         <Player onNavigate={fromPlayer} />
       </PlayerSheet>

@@ -58,23 +58,26 @@ export default function App() {
 
   return (
     <>
+      {/* what goes out of focus behind the player: the pages */}
       <div className="under" ref={under}>
         <main className="views">
           {TABS.map((t, i) => (
             <DepthStackView key={t.key} ref={(r) => { stacks.current[i] = r; }} active={tab === i} label={t.label} root={t.root} screens={SCREENS} />
           ))}
         </main>
-        <div className="chrome" ref={chrome}>
-          {bar ? <MiniPlayer /> : null}
-          <DotTabBar
-            tabs={TABS}
-            index={tab}
-            onChange={(i) => set({ tab: i })}
-            onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}
-          />
-        </div>
       </div>
-      <PlayerSheet open={player} under={under} onClosed={onPlayerClosed}>
+      {/* The floating chrome is not in there: its blur must never sit inside something that is itself blurred. It
+          sinks out of the screen while the player is up. */}
+      <div className="chrome" ref={chrome}>
+        {bar ? <MiniPlayer /> : null}
+        <DotTabBar
+          tabs={TABS}
+          index={tab}
+          onChange={(i) => set({ tab: i })}
+          onReselect={(i) => { const s = stacks.current[i]; if (s) { if (s.depth) s.popToRoot(); else s.scrollToTop(); } }}
+        />
+      </div>
+      <PlayerSheet open={player} under={under} aside={chrome} onClosed={onPlayerClosed}>
         <Player onNavigate={fromPlayer} />
       </PlayerSheet>
       <div id="toast" className={'glass' + (message ? ' on' : '')} role="status">{message || ''}</div>

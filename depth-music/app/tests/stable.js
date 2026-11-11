@@ -1,6 +1,7 @@
 // The rule: while a finger scrolls a page across the end of a transition, nothing changes on that page or on
 // anything it sits in (no attribute, no inline style, no class, no animation coming or going). Checks it for a tab
-// switch, a page coming in, a back swipe and the player going away, with either gesture driver.
+// switch, a page coming in, a back swipe and the player going away, with either gesture driver. Also: the tab row's
+// blur is never inside an ancestor that carries a filter.
 //
 //   npm run build && DRIVERS=scroll,js node tests/stable.js        (needs Playwright with Chromium)
 //
@@ -96,6 +97,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await touch('touchEnd'); await sleep(450);
     await slowScroll(1600);
     await report('after the player is pulled down, scrolling the page at once');
+
+    // 5. the tab row's blur never sits inside something that carries a filter (Safari then shows it as clear glass):
+    //    sampled every frame while the player comes up, is pulled part of the way, let go, and pulled away
+    await sleep(600);
+    await page.evaluate(() => {
+      window.glass = { bad: new Set(), on: true };
+      const haze = document.querySelector('.dtb-haze');
+      const tick = () => { if (!glass.on) return; for (let e = haze.parentElement; e; e = e.parentElement) { const f = getComputedStyle(e).filter; if (f && f !== 'none') glass.bad.add((e.className || e.tagName) + ' ' + f.replace(/[\d.]+px/, 'Npx')); } requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    });
+    await page.locator('.tabview.on [aria-label^="播放 "]').first().tap(); await sleep(1300);
+    await touch('touchStart', 196, 200); for (let i = 1; i <= 8; i++) { await touch('touchMove', 196, 200 + 20 * i); await sleep(16); }
+    await sleep(200); await touch('touchEnd'); await sleep(900);
+    await touch('touchStart', 196, 200); for (let i = 1; i <= 8; i++) { await touch('touchMove', 196, 200 + 60 * i); await sleep(16); }
+    await touch('touchEnd'); await sleep(300);
+    await slowScroll(800);
+    const bad = await page.evaluate(() => { glass.on = false; return [...glass.bad]; });
+    total += bad.length;
+    console.log(`[${driver}] the tab row's blur through the player's coming and going: ${bad.length ? 'inside a filtered ancestor: ' + bad.join(' | ') : 'never inside a filtered ancestor'}`);
     await ctx.close();
   }
   console.log(total ? `TOTAL ${total} change(s)` : 'TOTAL none');

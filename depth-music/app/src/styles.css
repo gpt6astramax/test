@@ -73,6 +73,7 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 /* Everything a transition moves keeps a layer of its own for good (will-change: transform). A layer that comes and
    goes with each transition is a change under the finger at the very moment the transition ends; see lib/quiet.js. */
 .under { transform-origin: 50% 40%; will-change: transform }
+.chrome { will-change: transform }
 /* On a wide screen the column's edges fade to the ground, so a page coming in is not cut off by a straight line. Two
    strips of the ground's colour over the edges: a mask over the pages would have every frame of every page turn
    drawn into a surface of its own first. */

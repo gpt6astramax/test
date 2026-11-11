@@ -6,7 +6,8 @@
 // behind the next one, and comes back with the finger as the player is pulled down. (PlayerSheet.web.jsx is the web twin, a vertical ScrollGesture.)
 //
 //   const motion = React.useRef(sheetMotion()).current;
-//   <Receding motion={motion} inert={open}> …the app… </Receding>
+//   <Receding motion={motion} inert={open}> …the pages… </Receding>
+//   <Sinking motion={motion} inert={open}> …the tab row… </Sinking>     // not part of what goes out of focus
 //   <PlayerSheet open={open} motion={motion} onClosed={…}> …the player… </PlayerSheet>
 import * as React from 'react';
 import { Animated, PanResponder, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -18,6 +19,8 @@ import { EASE, Haze, hazeTint, pair, place, drive, lerp } from './motion';
 const MS = 620, CLOSE_MS = 420;
 const BACK = { s: 0.86, y: 0.045, o: 0.5 };      // as a page behind the next one (nav/DepthStackView)
 const BLUR = 46;
+const SINK = 120;                  // how far the chrome sinks
+const RETURN = 0.35;               // it starts to return once the sheet is this far down (1 = away)
 const GUTTER = 20, COLUMN = 460;
 const BEND = 16;                   // degrees each half of the handle is turned to make the arrow
 const HALF = { position: 'absolute', top: 0, width: 21, height: 5, borderRadius: 2.5 };
@@ -44,6 +47,23 @@ export function Receding({ motion, inert, children }) {
       <Haze pointerEvents="none" tint={hazeTint(c.dark)} style={StyleSheet.absoluteFill}
         intensity={motion.j.interpolate({ inputRange: [0, 1], outputRange: [BLUR, 0], extrapolate: 'clamp' })} />
     </>
+  );
+}
+
+/** The floating chrome: it sinks out of the screen as the sheet comes up, and returns once the sheet is well on its way down. */
+export function Sinking({ motion, inert, style, children }) {
+  return (
+    <Animated.View
+      pointerEvents={inert ? 'none' : 'box-none'}
+      accessibilityElementsHidden={inert}
+      importantForAccessibility={inert ? 'no-hide-descendants' : 'auto'}
+      style={[style, {
+        opacity: motion.n.interpolate({ inputRange: [RETURN, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+        transform: [{ translateY: motion.n.interpolate({ inputRange: [RETURN, 1], outputRange: [SINK, 0], extrapolate: 'clamp' }) }],
+      }]}
+    >
+      {children}
+    </Animated.View>
   );
 }
 

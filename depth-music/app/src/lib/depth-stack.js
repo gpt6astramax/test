@@ -41,7 +41,9 @@ const FRONT = { s: 1, y: 0, blur: 0, o: 1 }, FAR = { s: 0.74, y: 10, blur: 40, o
 // What a page looks like right behind the one in front: smaller, lower, out of focus, faint. The player uses the same.
 export const BACK = { s: 0.86, y: 4.5, blur: 20, o: 0.5 };
 const tf = (v) => `translateY(${v.y}%) scale(${v.s})`;
-const frame = (v) => ({ transform: v.s === 1 && !v.y ? 'none' : tf(v), filter: `blur(${v.blur}px)`, opacity: v.o });
+// In focus there is no filter at all, not a blur of zero: a layer that carries a filter, even one that does nothing,
+// is drawn through a surface of its own, and Safari's backdrop blur (the tab row's) cannot see into or out of one.
+const frame = (v) => ({ transform: v.s === 1 && !v.y ? 'none' : tf(v), filter: v.blur ? `blur(${v.blur}px)` : 'none', opacity: v.o });
 const BACK_SVG = '<svg class="ic" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
 
 let styled = false;
@@ -54,7 +56,7 @@ function styles() {
   st.setAttribute('data-depth-stack', '');
   st.textContent =
     `.ds{--back-t:${tf(BACK)};--back-blur:${BACK.blur}px;--back-o:${BACK.o};--far-t:${tf(FAR)};--far-blur:${FAR.blur}px;--push-ms:${PUSH_MS}ms;--push-ease:${PUSH_EASE}}` +
-    `@keyframes ds-f1{0%,${hold}{transform:none;filter:blur(0px);opacity:1}100%{transform:var(--back-t);filter:blur(var(--back-blur));opacity:var(--back-o)}}` +
+    `@keyframes ds-f1{0%,${hold}{transform:none;filter:none;opacity:1}100%{transform:var(--back-t);filter:blur(var(--back-blur));opacity:var(--back-o)}}` +
     `@keyframes ds-f2{0%,${hold}{transform:var(--back-t);filter:blur(var(--back-blur));opacity:var(--back-o)}100%{transform:var(--far-t);filter:blur(var(--far-blur));opacity:0}}` +
     `@keyframes ds-leave{0%,${gone}{opacity:0}100%{opacity:1}}`;
   document.head.appendChild(st);
@@ -105,7 +107,7 @@ export function DepthStack(host) {
     const L = (k) => a[k] + (b[k] - a[k]) * f;
     el.dsMixed = true;
     el.style.transform = `translateY(${L('y')}%) scale(${L('s')})`;
-    el.style.filter = `blur(${L('blur')}px)`;
+    el.style.filter = L('blur') > 0.05 ? `blur(${L('blur')}px)` : 'none';
     el.style.opacity = String(L('o'));
   }
 
