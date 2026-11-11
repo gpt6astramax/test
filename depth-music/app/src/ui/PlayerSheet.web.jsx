@@ -1,6 +1,7 @@
 // The player. Unlike every other page it comes up from below, over whatever is on screen, and goes away with a swipe
-// down. Once up it is a page like any other: it fills the screen to the top, square-cornered, with a floating round
-// button to put it away, and like any other page it has no ground of its own. It is only its content; what was on
+// down. Once up it is a page like any other: it fills the screen to the top, square-cornered, and like any other
+// page it has no ground of its own. At its top, in the middle, is a short dark line bent into a shallow arrow that
+// points down: the hint that it goes away downwards. Pulled, the line straightens; tapped, it puts the player away. It is only its content; what was on
 // screen before stays behind it, smaller, lower, out of focus and faint, exactly as a page does behind the next one. It is a vertical ScrollGesture (sides [1]): with the 'scroll' driver dragging it is native
 // scrolling, so it follows the finger and snaps like a system sheet. It comes in with enter(), an animation and not
 // a gesture. What lies under it drops back out of focus, tied to the sheet's own scroll timeline.
@@ -14,11 +15,12 @@ import { whenQuiet } from '../lib/quiet';
 import { getDriver } from '../lib/driver';
 import { BACK } from '../lib/depth-stack';
 import { reduced, supportsTimeline, tapSwitch } from './platform';
-import { Icon } from './Icon';
 
 const ScrollGesture = window.ScrollGesture;
 const OVER = 0.1;                  // the commit point lies this far below the screen's edge
 const MS = 620, EASE = 'cubic-bezier(.2,.86,.24,1)';
+const BEND = 16;                   // degrees each half of the handle is turned to make the arrow
+const STRAIGHT = '94%';            // timeline point (100% = at rest) from which the handle is a straight line
 const FRONT_FRAME = { transform: 'none', filter: 'blur(0px)', opacity: 1 };
 const BACK_FRAME = { transform: `translateY(${BACK.y}%) scale(${BACK.s})`, filter: `blur(${BACK.blur}px)`, opacity: BACK.o };
 
@@ -31,7 +33,10 @@ function styles() {
   st.setAttribute('data-player-sheet', '');
   st.textContent =
     `.app{--sh-t:translateY(${BACK.y}%) scale(${BACK.s});--sh-blur:${BACK.blur}px;--sh-o:${BACK.o}}` +
-    `@keyframes sh-f{0%,${hold}{transform:none;filter:blur(0px);opacity:1}100%{transform:var(--sh-t);filter:blur(var(--sh-blur));opacity:var(--sh-o)}}`;
+    `@keyframes sh-f{0%,${hold}{transform:none;filter:blur(0px);opacity:1}100%{transform:var(--sh-t);filter:blur(var(--sh-blur));opacity:var(--sh-o)}}` +
+    // the handle's two halves: straight once the sheet has been pulled a little, bent into the arrow at rest
+    `@keyframes sh-hl{0%,${STRAIGHT}{transform:none}100%{transform:rotate(${BEND}deg)}}` +
+    `@keyframes sh-hr{0%,${STRAIGHT}{transform:none}100%{transform:rotate(-${BEND}deg)}}`;
   document.head.appendChild(st);
 }
 
@@ -64,6 +69,7 @@ function Surface({ open, onGone, under, children }) {
   const el = React.useRef(null);
   const body = React.useRef(null);
   const g = React.useRef(null);
+  const handle = React.useRef(null);
   const left = React.useRef(false);
   const latest = React.useRef(onGone);
   latest.current = onGone;
@@ -80,6 +86,10 @@ function Surface({ open, onGone, under, children }) {
       u.inert = true;
       if (tied) { u.style.animation = 'sh-f linear both'; u.style.animationTimeline = gesture.timeline; }
     }
+    // The handle follows the sheet: by its scroll timeline, or else by a class set when the state changes.
+    const halves = handle.current.querySelectorAll('i');
+    if (tied) halves.forEach((h, i) => { h.style.animation = (i ? 'sh-hr' : 'sh-hl') + ' linear both'; h.style.animationTimeline = gesture.timeline; });
+    let flat = false;
     const gone = () => {
       if (left.current) return;
       left.current = true;
@@ -88,6 +98,7 @@ function Surface({ open, onGone, under, children }) {
       latest.current();
     };
     const offChange = gesture.on('change', (p) => {
+      if (!tied && flat !== p > 0.03) { flat = p > 0.03; handle.current.classList.toggle('flat', flat); }
       if (!u) return;
       if (clock && p > 0.02) { clock.cancel(); clock = null; }       // the finger took the sheet while it was coming up
       if (gesture.passing && u.inert) u.inert = false;
@@ -131,14 +142,12 @@ function Surface({ open, onGone, under, children }) {
     <div ref={el} className="sheet" role="dialog" aria-label="播放器">
       <div ref={body}>
         <div className="sheet-panel">
-          <div className="nav">
-            <label className="tap glass" role="button" tabIndex={0} aria-label="收起播放器"
-              onClick={(e) => { if (!(e.target.matches && e.target.matches('.hsw'))) close(); }}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); close(); } }}>
-              {tapSwitch ? <input type="checkbox" switch="" className="hsw" aria-hidden="true" /> : null}
-              <Icon name="down1" size={22} />
-            </label>
-          </div>
+          <label ref={handle} className="sheet-handle" role="button" tabIndex={0} aria-label="收起播放器"
+            onClick={(e) => { if (!(e.target.matches && e.target.matches('.hsw'))) close(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); close(); } }}>
+            {tapSwitch ? <input type="checkbox" switch="" className="hsw" aria-hidden="true" /> : null}
+            <i /><i />
+          </label>
           <div className="sheet-scroll">
             <div className="sheet-in">{children}</div>
           </div>

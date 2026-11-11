@@ -1,7 +1,8 @@
 // The player on iOS / Android. Unlike every other page it comes up from below, over whatever is on screen, tab row
 // included, and goes away with a swipe down. Once up it is a page like any other: it fills the screen to the top,
-// square-cornered, with a floating round button to put it away, and like any other page it has no ground of its
-// own. What was on screen before stays behind it, smaller, lower, out of focus and faint, exactly as a page does
+// square-cornered, and like any other page it has no ground of its own. At its top, in the middle, is a short dark
+// line bent into a shallow arrow that points down: the hint that it goes away downwards. Pulled, the line
+// straightens; tapped, it puts the player away. What was on screen before stays behind it, smaller, lower, out of focus and faint, exactly as a page does
 // behind the next one, and comes back with the finger as the player is pulled down. (PlayerSheet.web.jsx is the web twin, a vertical ScrollGesture.)
 //
 //   const motion = React.useRef(sheetMotion()).current;
@@ -12,14 +13,16 @@ import { Animated, PanResponder, ScrollView, StyleSheet, View, useWindowDimensio
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from './theme';
 import { Tap } from './Tap';
-import { Icon } from './Icon';
-import { Glass } from './Glass';
 import { EASE, Haze, hazeTint, pair, place, drive, lerp } from './motion';
 
 const MS = 620, CLOSE_MS = 420;
 const BACK = { s: 0.86, y: 0.045, o: 0.5 };      // as a page behind the next one (nav/DepthStackView)
 const BLUR = 46;
 const GUTTER = 20, COLUMN = 460;
+const BEND = 16;                   // degrees each half of the handle is turned to make the arrow
+const HALF = { position: 'absolute', top: 0, width: 21, height: 5, borderRadius: 2.5 };
+// straight from 6% of the way down
+const bend = (v, deg) => v.interpolate({ inputRange: [0, 0.06], outputRange: [deg + 'deg', '0deg'], extrapolate: 'clamp' });
 
 /** 1: the sheet is away. 0: it is up. */
 export const sheetMotion = () => pair(1);
@@ -63,7 +66,7 @@ function Surface({ open, motion, onGone, children }) {
   const range = H;
   const latest = React.useRef(onGone);
   latest.current = onGone;
-  const s = React.useRef({ leaving: false, scrollY: 0, base: 0 }).current;
+  const s = React.useRef({ leaving: false, scrollY: 0, base: 0, onHandle: false }).current;
 
   React.useEffect(() => { drive(motion, 0, MS); }, [motion]);
   const close = () => {
@@ -85,12 +88,13 @@ function Surface({ open, motion, onGone, children }) {
       } else drive(motion, 0, 220 + 260 * Math.min(1, v));
     };
     return PanResponder.create({
-      onMoveShouldSetPanResponderCapture: (_, g) => !s.leaving && s.scrollY <= 0 && g.dy > 8 && g.dy > Math.abs(g.dx) * 1.4,
+      // (from the handle it can always be pulled, wherever the content is scrolled to)
+      onMoveShouldSetPanResponderCapture: (_, g) => !s.leaving && (s.scrollY <= 0 || s.onHandle) && g.dy > 8 && g.dy > Math.abs(g.dx) * 1.4,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (_, g) => { s.base = g.dy; },
       onPanResponderMove: (_, g) => place(motion, Math.max(0, Math.min(1, (g.dy - s.base) / range))),
-      onPanResponderRelease: (_, g) => settle(g, false),
-      onPanResponderTerminate: (_, g) => settle(g, true),
+      onPanResponderRelease: (_, g) => { s.onHandle = false; settle(g, false); },
+      onPanResponderTerminate: (_, g) => { s.onHandle = false; settle(g, true); },
     });
   }, [motion, range, s]);
 
@@ -111,16 +115,20 @@ function Surface({ open, motion, onGone, children }) {
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={(e) => { s.scrollY = e.nativeEvent.contentOffset.y; }}
-        contentContainerStyle={{ width: '100%', maxWidth: COLUMN, alignSelf: 'center', gap: 26, paddingTop: insets.top + 66, paddingHorizontal: GUTTER, paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{ width: '100%', maxWidth: COLUMN, alignSelf: 'center', gap: 26, paddingTop: insets.top + 50, paddingHorizontal: GUTTER, paddingBottom: insets.bottom + 40 }}
       >
         {children}
       </ScrollView>
-      <View pointerEvents="box-none" style={{ position: 'absolute', top: insets.top + 10, left: 0, right: 0, alignItems: 'center' }}>
-        <View pointerEvents="box-none" style={{ width: '100%', maxWidth: COLUMN, paddingHorizontal: GUTTER, flexDirection: 'row' }}>
-          <Tap label="收起播放器" onPress={close} pressed={{ opacity: 0.6, transform: [{ scale: 0.94 }] }}>
-            <Glass radius={21} style={{ width: 42, height: 42, alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="down1" size={22} color={c.fg} />
-            </Glass>
+      {/* The handle: two halves that overlap by their round ends; each turns about the end they share. Bent into the
+          arrow at rest, straight as soon as the sheet has been pulled a little. */}
+      <View pointerEvents="box-none" style={{ position: 'absolute', top: insets.top + 4, left: 0, right: 0, alignItems: 'center' }}>
+        <View onTouchStart={() => { s.onHandle = true; }} onTouchEnd={() => { s.onHandle = false; }}>
+          <Tap label="收起播放器" onPress={close} pressed={{ opacity: 0.55 }} style={{ width: 96, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+            {/* solid halves, faint as a group: where they overlap must not show darker */}
+            <View needsOffscreenAlphaCompositing style={{ width: 37, height: 5, opacity: 0.6 }}>
+              <Animated.View style={[HALF, { left: 0, backgroundColor: c.fg, transformOrigin: '18.5px 2.5px', transform: [{ rotate: bend(motion.n, BEND) }] }]} />
+              <Animated.View style={[HALF, { right: 0, backgroundColor: c.fg, transformOrigin: '2.5px 2.5px', transform: [{ rotate: bend(motion.n, -BEND) }] }]} />
+            </View>
           </Tap>
         </View>
       </View>

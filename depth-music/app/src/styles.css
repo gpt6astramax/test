@@ -152,7 +152,16 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 /* the sheet's content scrolls on its own; at its top a pull down is handed on to the sheet, which is how it is dismissed */
 .sheet-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none }
 .sheet-scroll::-webkit-scrollbar { display: none }
-.sheet-in { display: flex; flex-direction: column; gap: 26px; padding: calc(var(--sat, 0px) + 66px) var(--gutter-r) calc(var(--sab, 0px) + 40px) var(--gutter-l) }
+.sheet-in { display: flex; flex-direction: column; gap: 26px; padding: calc(var(--sat, 0px) + 50px) var(--gutter-r) calc(var(--sab, 0px) + 40px) var(--gutter-l) }
+/* The handle: a short dark line at the top, in the middle, bent into a shallow arrow pointing down. Two halves that
+   overlap by their round ends; each turns about the end they share. Straight while the sheet is being pulled
+   (PlayerSheet ties them to the sheet's scroll, or sets .flat). A tap on it puts the player away. */
+.sheet-handle { position: absolute; z-index: 2; top: calc(var(--sat, 0px) + 4px); left: 50%; width: 96px; height: 40px; margin-left: -48px; cursor: pointer; opacity: .6; transition: opacity .15s }
+.sheet-handle:active { opacity: .35 }
+.sheet-handle i { position: absolute; top: 50%; width: 21px; height: 5px; margin-top: -2.5px; border-radius: 2.5px; background: var(--fg); transition: transform .28s var(--spring) }   /* solid: the faintness is the handle's, so the overlap does not show */
+.sheet-handle i:first-of-type { right: calc(50% - 2.5px); transform-origin: calc(100% - 2.5px) 50%; transform: rotate(16deg) }
+.sheet-handle i:last-of-type { left: calc(50% - 2.5px); transform-origin: 2.5px 50%; transform: rotate(-16deg) }
+.sheet-handle.flat i { transform: none }
 /* what lies under the sheet drops back out of focus, on the sheet's own scroll timeline */
 .under.sh-back { transform: var(--sh-t); filter: blur(var(--sh-blur)); opacity: var(--sh-o) }
 
