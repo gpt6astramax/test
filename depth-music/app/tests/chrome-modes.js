@@ -10,7 +10,7 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const ROOT = process.argv[2] || path.join(__dirname, '..', '..');     // the folder that holds public/
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const MODES = ['cover', 'top', 'sink', 'rise', 'left', 'fade', 'noglass', 'asis'];
+const MODES = ['top', 'cover', 'sink', 'rise', 'left', 'fade', 'noglass', 'asis'];
 // asis is the control: it is expected to break the rule
 const EXPECT_CLEAN = { cover: true, top: true, sink: true, rise: true, left: true, fade: true, noglass: true, asis: false };
 // these do nothing to the row: not one attribute, style or animation on it or in it may change while the player comes and goes
@@ -23,7 +23,7 @@ const UNTOUCHED = { cover: true, top: true };
     const ctx = await browser.newContext({ viewport: { width: 393, height: 852 }, hasTouch: true, isMobile: true });
     const page = await ctx.newPage();
     const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-    await page.addInitScript(([d, m]) => { localStorage.setItem('depth-music:driver', d); localStorage.setItem('depth-music:chrome-2', m); }, [driver, mode]);
+    await page.addInitScript(([d, m]) => { localStorage.setItem('depth-music:driver', d); localStorage.setItem('depth-music:chrome-3', m); }, [driver, mode]);
     await page.goto(`http://127.0.0.1:${server.address().port}/depth-music/`); await sleep(1200);
     const cdp = await ctx.newCDPSession(page);
     const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });

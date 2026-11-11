@@ -14,13 +14,15 @@
 // away, although the same row over a pushed page never does. The difference is that a pushed page does nothing to the
 // row, while every way above does something to it (an animation, a transform, inert, and their removal afterwards).
 // So two ways leave the row alone altogether, exactly as a pushed page does:
+//   top     (the default, and what was asked for: the row does not move and never loses its blur.) Nothing is done
+//           to the row. It stays where it is, in front of the player, as it is in front of any other page, and its
+//           glass goes on blurring whatever passes behind it
 //   cover   nothing is done to the row. The player's veil (glass) lies over it, so it goes out of focus in place,
 //           together with the page behind
-//   top     nothing is done to the row. It stays in front of the player, as it does in front of any other page
-const KEY = 'depth-music:chrome-2';       // (-2: the default changed; choices made among the earlier ways start over)
+const KEY = 'depth-music:chrome-3';       // (-3: the default changed again; earlier choices start over)
 export const CHROME_MODES = [
+  { key: 'top', title: '不动，毛玻璃一直有效', note: '完全不碰底栏：它留在原位、在播放器前面，和普通子页面里一样，毛玻璃一直在模糊它后面经过的内容。点页签会先收起播放器' },
   { key: 'cover', title: '不动，被毛玻璃罩盖住', note: '完全不碰底栏：播放器的毛玻璃罩盖在它上面，它和页面一起原地变虚，播放器走了再一起变清楚' },
-  { key: 'top', title: '不动，留在最上面', note: '完全不碰底栏：它浮在播放器上面，和普通子页面一样；点页签会先收起播放器' },
   { key: 'sink', title: '下沉离开', note: '底栏往下沉出屏幕，只位移，不改透明度' },
   { key: 'rise', title: '跟着上升', note: '底栏贴着播放器的上沿被顶上去，从屏幕顶部出去' },
   { key: 'left', title: '向左离开', note: '底栏往左滑出屏幕，只位移，不改透明度' },
@@ -29,7 +31,7 @@ export const CHROME_MODES = [
   { key: 'asis', title: '留下，保留毛玻璃', note: '对照用：最早的做法，毛玻璃留在会变淡的那一层里，会变成透明' },
 ];
 const valid = (m) => CHROME_MODES.some((x) => x.key === m);
-const DEFAULT = 'cover';
+const DEFAULT = 'top';
 export function getChromeMode() {
   try { const m = localStorage.getItem(KEY); return valid(m) ? m : DEFAULT; } catch (e) { return DEFAULT; }
 }

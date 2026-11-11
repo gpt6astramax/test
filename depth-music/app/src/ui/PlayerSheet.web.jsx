@@ -12,9 +12,11 @@
 //   - what lies under it: transform and opacity. Its blur is either a veil laid over it (glass of fixed radius whose
 //     strength is the opacity() of its backdrop-filter) or, in the 'filter' depth mode, its own filter: blur()
 //     (lib/depth-mode.js says why the first is the default in Chromium);
-//   - the floating chrome (the tab row): by default nothing at all is done to it. The veil lies over it ('cover'), or
-//     it stays in front of the player ('top'). On a real device a row that is left alone (as a pushed page leaves
-//     it alone) was seen to keep its glass, and one that is moved away and back to lose it for a moment. In the ways that do move it, it leaves by a transform, never by opacity (glass stops blurring as soon
+//   - the floating chrome (the tab row): by default nothing at all is done to it. It stays where it is, in front of
+//     the player ('top'), and its glass goes on blurring what passes behind it, exactly as in front of a pushed page;
+//     or the veil lies over it ('cover'). The ways that did something to it are still here to compare with: they
+//     moved it, dimmed it, or switched its glass off while the player was up, and that last one is what showed as
+//     the row having no blur for a moment after the player had gone. In the ways that do move it, it leaves by a transform, never by opacity (glass stops blurring as soon
 //     as anything it sits in has an opacity below 1, an opacity animation or a filter); 'fade' dims the row's own
 //     parts instead, the glass through opacity() in its backdrop-filter. It is given back the moment the sheet has gone;
 //   - the handle's two halves: a rotation.
@@ -101,7 +103,7 @@ function styles() {
  *           front of the player), 'sink' | 'rise' | 'left' | 'fade' (it is outside `under` and leaves),
  *           'noglass' (inside `under`, its own blur off meanwhile), 'asis' (inside `under`, left alone)
  */
-export function PlayerSheet({ open, onClosed, under, veil, aside, asideMode = 'sink', children }) {
+export function PlayerSheet({ open, onClosed, under, veil, aside, asideMode = 'top', children }) {
   const [state, setState] = React.useState({ mounted: open, gen: 0 });
   const tidy = React.useRef(null);
   const latest = React.useRef(onClosed);

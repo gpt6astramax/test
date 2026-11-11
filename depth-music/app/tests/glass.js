@@ -20,7 +20,7 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const zlib = require('zlib');
 const ROOT = process.env.ROOT || path.join(__dirname, '..', '..');     // the folder that holds public/
 const DRIVER = process.argv[2] === 'js' ? 'js' : 'scroll';
-const MODES = (process.argv[3] || 'cover,top,sink,rise,left,fade,noglass,asis').split(',');
+const MODES = (process.argv[3] || 'top,cover,sink,rise,left,fade,noglass,asis').split(',');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const PERIOD = 24;
@@ -77,7 +77,7 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
     const ctx = await browser.newContext({ viewport: { width: 393, height: 852 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
     const page = await ctx.newPage();
     const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-    await page.addInitScript(([d, m, dp]) => { localStorage.setItem('depth-music:driver', d); localStorage.setItem('depth-music:chrome-2', m); localStorage.setItem('depth-music:depth', dp); }, [DRIVER, mode, depth]);
+    await page.addInitScript(([d, m, dp]) => { localStorage.setItem('depth-music:driver', d); localStorage.setItem('depth-music:chrome-3', m); localStorage.setItem('depth-music:depth', dp); }, [DRIVER, mode, depth]);
     await page.goto(`http://127.0.0.1:${server.address().port}/depth-music/`); await sleep(1200);
     const cdp = await ctx.newCDPSession(page);
     const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });

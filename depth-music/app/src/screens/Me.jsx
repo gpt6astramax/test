@@ -6,7 +6,7 @@ import { themed } from '../ui/themed';
 import { TRACKS, ARTISTS } from '../data';
 import { Tap } from '../ui/Tap';
 import { useStore, set, setChromeMode } from '../state';
-import { CHROME_MODES } from '../lib/chrome-mode';
+import { CHROME_MODES, chromeUntouched } from '../lib/chrome-mode';
 import { DEPTH_MODES, getDepthSetting, saveDepthSetting, getDepthMode } from '../lib/depth-mode';
 import { getDriver, setDriver } from '../lib/driver';
 
@@ -109,12 +109,18 @@ function DepthSection() {
 }
 
 // Web only: what the tab row does while the player is up. Several ways, to compare on a device.
+// The ways that leave the row alone come first; the earlier ones (which move it, dim it, switch its glass off or
+// shrink it with the page) are kept below them, to compare with.
+const STILL = CHROME_MODES.filter((m) => chromeUntouched(m.key));
+const EARLIER = CHROME_MODES.filter((m) => !chromeUntouched(m.key));
 function ChromeSection() {
   const mode = useStore((s) => s.chromeMode);
   return (
     <Section title="播放器升起时的底栏">
-      <Picks items={CHROME_MODES} value={mode} onPick={setChromeMode} />
-      <Fine>下次打开播放器时生效。前两种完全不碰底栏，和普通子页面一样；中间四种会动底栏本身（位移，或让它变淡）；最后两种把它留在后面那一层里。</Fine>
+      <Picks items={STILL} value={mode} onPick={setChromeMode} />
+      <Fine>下次打开播放器时生效。这两种都完全不碰底栏：它不位移、不缩放、不变淡。第一种是默认，底栏的毛玻璃一直有效。</Fine>
+      <Fine>下面是之前试过的做法，留着对照。它们会移动底栏、把它调淡、在播放器期间关掉它的毛玻璃，或让它跟着页面缩小：</Fine>
+      <Picks items={EARLIER} value={mode} onPick={setChromeMode} />
     </Section>
   );
 }
