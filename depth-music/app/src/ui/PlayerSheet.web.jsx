@@ -13,9 +13,8 @@
 //     strength is the opacity() of its backdrop-filter) or, in the 'filter' depth mode, its own filter: blur()
 //     (lib/depth-mode.js says why the first is the default in Chromium);
 //   - the floating chrome (the tab row): by default nothing at all is done to it. The veil lies over it ('cover'), or
-//     it stays in front of the player ('top'): a row that is left alone, as a pushed page leaves it alone, keeps its
-//     glass on every device it was tried on, and one that is moved away and back has been seen to lose it for a
-//     moment. In the ways that do move it, it leaves by a transform, never by opacity (glass stops blurring as soon
+//     it stays in front of the player ('top'). On a real device a row that is left alone (as a pushed page leaves
+//     it alone) was seen to keep its glass, and one that is moved away and back to lose it for a moment. In the ways that do move it, it leaves by a transform, never by opacity (glass stops blurring as soon
 //     as anything it sits in has an opacity below 1, an opacity animation or a filter); 'fade' dims the row's own
 //     parts instead, the glass through opacity() in its backdrop-filter. It is given back the moment the sheet has gone;
 //   - the handle's two halves: a rotation.
