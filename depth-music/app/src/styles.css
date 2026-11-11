@@ -71,7 +71,7 @@ svg.ic.i-moon { display: var(--moon) }
 /* where 100vh is short of the screen by the top safe area and the page starts below the status bar: the container
    moves up by the top safe area and is 100vh + top safe area tall */
 html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * env(safe-area-inset-top, 0px)); height: calc(100vh + env(safe-area-inset-top, 0px)) }
-.under, .views, .tabview { position: absolute; inset: 0 }
+.under, .views, .tabview, .stack { position: absolute; inset: 0 }
 .under { transform-origin: 50% 40% }
 @media (min-width: 500px) { .views { -webkit-mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent) } }
 /* tabs cross-fade; the one you leave drops back out of focus */
@@ -134,18 +134,15 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 .player .sg-pad[data-side="1"]::after { content: "‹  上一首"; right: 22px }
 .pl-prog { position: absolute; left: 20px; right: 20px; bottom: 0; height: 2px; border-radius: 2px; background: var(--wave-acc, var(--fg)); transform-origin: 0 50%; transform: scaleX(var(--prog)); transition: --prog .25s linear; --prog: 0; pointer-events: none }
 
-/* ---- the player sheet: comes up from below over everything, goes away with a swipe down ---- */
+/* ---- the player: comes up from below over everything and fills the screen like a page; goes away with a swipe down ---- */
 .sheet { position: absolute; inset: 0; z-index: 20 }
 .sheet > .sg-body { display: flex; flex-direction: column }
-.sheet-panel { flex: 1; min-height: 0; margin-top: calc(var(--sat, 0px) + 12px); border-radius: 28px 28px 0 0; overflow: hidden; display: flex; flex-direction: column;
-  background: var(--sheet); border-top: 1px solid var(--glass-edge); box-shadow: 0 -10px 40px rgb(0 0 0 / .16);
+.sheet-panel { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--sheet);
   -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6) }
-.sheet-grab { flex: none; height: 28px; display: grid; place-items: center; cursor: grab }
-.sheet-grab::before { content: ""; width: 38px; height: 5px; border-radius: 3px; background: var(--fg3) }
 /* the sheet's content scrolls on its own; at its top a pull down is handed on to the sheet, which is how it is dismissed */
 .sheet-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none }
 .sheet-scroll::-webkit-scrollbar { display: none }
-.sheet-in { display: flex; flex-direction: column; gap: 26px; padding: 6px var(--gutter-r) calc(var(--sab, 0px) + 40px) var(--gutter-l) }
+.sheet-in { display: flex; flex-direction: column; gap: 26px; padding: calc(var(--sat, 0px) + 66px) var(--gutter-r) calc(var(--sab, 0px) + 40px) var(--gutter-l) }
 /* what lies under the sheet drops back out of focus, on the sheet's own scroll timeline */
 .under.sh-back { transform: var(--sh-t); filter: blur(var(--sh-blur)); opacity: var(--sh-o) }
 @keyframes sh-r { from { transform: none; filter: blur(0px); opacity: 1 } to { transform: var(--sh-t); filter: blur(var(--sh-blur)); opacity: var(--sh-o) } }

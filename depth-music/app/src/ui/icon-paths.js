@@ -3,6 +3,7 @@
 export const ICONS = {
   back: [['path', { d: 'M15 5l-7 7 7 7' }]],
   go: [['path', { d: 'M9 5l7 7-7 7' }]],
+  down1: [['path', { d: 'M5 9l7 7 7-7' }]],
   play: [['path', { d: 'M8 5.5v13l11-6.5z', fill: true }]],
   pause: [['path', { d: 'M8 5v14M16 5v14', strokeWidth: 3.2 }]],
   next: [['path', { d: 'M6 6v12l9-6z', fill: true }], ['path', { d: 'M18 6v12' }]],

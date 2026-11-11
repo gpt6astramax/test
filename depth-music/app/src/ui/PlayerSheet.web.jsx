@@ -1,10 +1,12 @@
 // The player. Unlike every other page it comes up from below, over whatever is on screen, and goes away with a swipe
-// down. It is a vertical ScrollGesture (sides [1]): dragging it is native scrolling, so it follows the finger and snaps
-// like a system sheet. It comes in with enter(), an animation and not a scroll. What lies under it drops back out of
-// focus on the sheet's own scroll timeline.
+// down. Once up it is a page like any other: it fills the screen to the top, square-cornered, with a floating round
+// button to put it away. It is a vertical ScrollGesture (sides [1]): dragging it is native scrolling, so it follows
+// the finger and snaps like a system sheet. It comes in with enter(), an animation and not a scroll. What lies under
+// it drops back out of focus on the sheet's own scroll timeline.
 import * as React from 'react';
 import '../lib/scroll-gesture.js';
-import { reduced, supportsTimeline } from './platform';
+import { reduced, supportsTimeline, tapSwitch } from './platform';
+import { Icon } from './Icon';
 
 const ScrollGesture = window.ScrollGesture;
 const OVER = 0.1;                  // the commit point lies this far below the screen's edge
@@ -91,8 +93,14 @@ function Surface({ open, onGone, under, children }) {
     <div ref={el} className="sheet" role="dialog" aria-label="播放器">
       <div ref={body}>
         <div className="sheet-panel">
-          <div className="sheet-grab" onClick={() => g.current && g.current.go(1)} role="button" aria-label="收起播放器" tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); g.current && g.current.go(1); } }} />
+          <div className="nav">
+            <label className="tap glass" role="button" tabIndex={0} aria-label="收起播放器"
+              onClick={(e) => { if (!(e.target.matches && e.target.matches('.hsw')) && g.current) g.current.go(1); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); g.current && g.current.go(1); } }}>
+              {tapSwitch ? <input type="checkbox" switch="" className="hsw" aria-hidden="true" /> : null}
+              <Icon name="down1" size={22} />
+            </label>
+          </div>
           <div className="sheet-scroll">
             <div className="sheet-in">{children}</div>
           </div>

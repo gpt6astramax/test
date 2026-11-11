@@ -10,6 +10,7 @@ import { DepthStack } from '../lib/depth-stack';
 import { NavContext } from './context';
 
 export const DepthStackView = React.forwardRef(function DepthStackView({ active, label, root: Root, screens }, ref) {
+  const section = React.useRef(null);
   const host = React.useRef(null);
   const stack = React.useRef(null);
   const [rootEl, setRootEl] = React.useState(null);
@@ -41,10 +42,14 @@ export const DepthStackView = React.forwardRef(function DepthStackView({ active,
   React.useImperativeHandle(ref, () => nav, [nav]);
 
   // a tab that is not showing takes no focus and is not read out
-  React.useLayoutEffect(() => { if (host.current) host.current.inert = !active; }, [active]);
+  React.useLayoutEffect(() => { if (section.current) section.current.inert = !active; }, [active]);
 
   return (
-    <section ref={host} className={'tabview' + (active ? ' on' : '')} aria-label={label}>
+    <section ref={section} className={'tabview' + (active ? ' on' : '')} aria-label={label}>
+      {/* The stack lives in an element of its own, whose class React never writes: DepthStack puts its own classes on
+          its host (the depth values hang on them), and React replaces the whole class attribute of an element whenever
+          a className it renders changes, as the one above does on every tab switch. */}
+      <div ref={host} className="stack" />
       <NavContext.Provider value={nav}>
         {rootEl ? createPortal(<Root />, rootEl) : null}
         {pages.map((p) => {

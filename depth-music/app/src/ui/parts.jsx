@@ -53,11 +53,14 @@ export const Cover = ({ track, style }) => <CoverArt hue={track.hue} seed={track
 export const ArtistDisc = ({ artist, size = 92 }) => (
   <CoverArt hue={artist.hue + 20} seed={artistSeed(artist)} style={{ width: size, height: size, borderRadius: size / 2 }} />
 );
+/** Up to four covers as one picture: four in a 2 x 2 grid, two or three side by side (the first two), one on its own. */
 export function Mosaic({ ids, style }) {
   const S = useS();
+  const shown = ids.length >= 4 ? ids.slice(0, 4) : ids.slice(0, Math.min(2, ids.length));
+  const cell = shown.length === 4 ? S.mosaicCell : { width: `${100 / shown.length}%`, height: '100%' };
   return (
     <View style={[S.mosaic, style]}>
-      {ids.slice(0, 4).map((id) => <CoverArt key={id} hue={byId[id].hue} seed={trackSeed(byId[id])} style={S.mosaicCell} />)}
+      {shown.map((id) => <CoverArt key={id} hue={byId[id].hue} seed={trackSeed(byId[id])} style={cell} />)}
     </View>
   );
 }
