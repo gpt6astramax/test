@@ -24,6 +24,8 @@ document.documentElement.setAttribute('data-theme', 'light');
   var bar = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
   html.classList.add(ios ? 'device-ios' : /Android/.test(ua) ? 'device-android' : 'device-desktop');
   if (standalone()) html.classList.add('device-standalone');
+  /* inside an app's WebView (WKWebView names no "Safari/" in its user agent; the Expo shell adds "DepthMusicShell") */
+  if (ios && (!/Safari\//.test(ua) || /DepthMusicShell/.test(ua))) html.classList.add('device-webview');
   var full = ios && standalone() && bar && bar.content === 'black-translucent';
   if (full) html.classList.add('device-full-viewport');
 
@@ -56,7 +58,7 @@ document.documentElement.setAttribute('data-theme', 'light');
 <body>
 <!-- Safari (iOS 26, in a tab) lays a blur of its own over the page under the status bar. It leaves it out when a
      fixed element of a solid colour lies across the top edge: this strip, the page's ground, as tall as the top safe
-     area. Only in Safari's tabs: the home-screen app has no such blur, and keeps the status bar clear. -->
+     area. Only in Safari's tabs: the home-screen app and an app's WebView have no such blur, and keep the status bar clear. -->
 <div class="edge-top" aria-hidden="true"></div>
 <div class="app" id="app"></div>
 <script type="module" src="./main.jsx"></script>
