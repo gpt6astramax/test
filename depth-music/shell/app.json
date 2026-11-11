@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "景深翻页",
+    "slug": "depth-music-shell",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#f2f2f0",
+    "ios": { "supportsTablet": false },
+    "android": { "edgeToEdgeEnabled": true }
+  }
+}
