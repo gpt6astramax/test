@@ -78,8 +78,8 @@ export async function download(m) {
     if (inSnapshot(f) || stored(f).exists) continue;
     const tmp = new File(Paths.cache, `web-${f.sha256}`);
     if (tmp.exists) tmp.delete();
-    // index.html has the same address in every version: ask past any cache for this one
-    const url = BASE + f.path + (f.path === 'index.html' ? `?v=${f.sha256.slice(0, 12)}` : '');
+    // index.html: the folder's address (the site redirects …/index.html there), asking past any cache for this version
+    const url = f.path === 'index.html' ? `${BASE}?v=${f.sha256.slice(0, 12)}` : BASE + f.path;
     await File.downloadFileAsync(url, tmp);
     const sum = await tmp.digest('SHA-256');
     if (sum !== f.sha256) { tmp.delete(); throw new Error(`${f.path}: not the file in the manifest`); }
