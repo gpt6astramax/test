@@ -20,7 +20,12 @@
   /* Jost, the face of the lit-paper style: light (300) for display, regular for text; Chinese falls to the system face */
   --display: "Jost", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --text: "Jost", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --gutter-l: max(20px, env(safe-area-inset-left, 0px)); --gutter-r: max(20px, env(safe-area-inset-right, 0px));
+  /* The app fills the whole screen at any width and in landscape: the pages, the glass and the depth behind them go
+     from edge to edge. Only the content keeps to a column (--col), centred: the gutters grow to centre it, and never
+     fall under the notch or the rounded corners (the side safe areas, in landscape). The tab row keeps to --bar. */
+  --col: 600px; --bar: 440px;
+  --edge-l: max(20px, env(safe-area-inset-left, 0px)); --edge-r: max(20px, env(safe-area-inset-right, 0px));
+  --gutter-l: max(var(--edge-l), calc((100vw - var(--col)) / 2)); --gutter-r: max(var(--edge-r), calc((100vw - var(--col)) / 2));
   --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
   --spring: cubic-bezier(.3, 1.45, .45, 1);
   color-scheme: light;
@@ -64,7 +69,7 @@ svg.ic.i-moon { display: var(--moon) }
 
 /* ---- frame ---- */
 /* react-native-web mounts the app in a root view that flexes to fill: the container is a column for it */
-.app { display: flex; flex-direction: column; max-width: 460px; margin: 0 auto; overflow: hidden; box-sizing: border-box; background: var(--bg); --chrome: 84px }
+.app { display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; background: var(--bg); --chrome: 84px }
 .app.has-bar { --chrome: 150px }
 /* where 100vh is short of the screen by the top safe area and the page starts below the status bar: the container
    moves up by the top safe area and is 100vh + top safe area tall */
@@ -77,14 +82,6 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
    opacity below 1, a filter, or an animation of either: the glass inside it would stop blurring. It belongs to the
    root pages; a page in front covers it where it is (lib/chrome-cover.js), by values on its leaves only. */
 .chrome { will-change: transform }
-/* On a wide screen the column's edges fade to the ground, so a page coming in is not cut off by a straight line. Two
-   strips of the ground's colour over the edges: a mask over the pages would have every frame of every page turn
-   drawn into a surface of its own first. */
-@media (min-width: 500px) {
-  .under::before, .under::after { content: ""; position: absolute; z-index: 4; top: 0; bottom: 0; width: 32px; pointer-events: none }
-  .under::before { left: 0; background: linear-gradient(90deg, var(--bg), transparent) }
-  .under::after { right: 0; background: linear-gradient(270deg, var(--bg), transparent) }
-}
 /* Tabs dissolve: the tab you leave fades out, shrinking and going out of focus, over the one you go to. The new tab
    is simply there, with no transition of its own: it is the one a finger is about to scroll, and nothing about it
    may change when the fade ends. */
@@ -138,7 +135,8 @@ html.back-plain .nav .tap { background: none; border: 0; box-shadow: none; -webk
   background: linear-gradient(90deg, var(--wave-acc, var(--fg)) calc(var(--prog) * 100%), var(--wave-rest) calc(var(--prog) * 100%)) }
 
 /* ---- floating chrome: the play bar (optional) and the tab row (src/ui/DotTabBar) ---- */
-.chrome { position: absolute; z-index: 5; left: var(--gutter-l); right: var(--gutter-r);
+.chrome { position: absolute; z-index: 5;
+  left: max(var(--edge-l), calc((100vw - var(--bar)) / 2)); right: max(var(--edge-r), calc((100vw - var(--bar)) / 2));
   bottom: max(var(--sab, 0px) - 4px, 26px);   /* above the home indicator, clear of the screen's edge: the blur ends above it */
   display: flex; flex-direction: column; gap: 8px }
 .shell { position: relative; border-radius: 20px; overflow: hidden }
