@@ -58,8 +58,8 @@ const frame = (v, blur) => {
   if (blur) f.filter = v.blur ? `blur(${v.blur}px)` : 'none';
   return f;
 };
-// The veil: glass of a fixed radius; how much of it shows is the opacity() inside the backdrop-filter. (Not the
-// element's own opacity: fading a blurred element that way can switch its blur off.)
+// The veil: glass of a fixed radius; how much of it shows is the opacity() inside the backdrop-filter, the function
+// made for this. (Measured in Chromium, the element's own opacity thins it in the same way; Safari was not measured.)
 const glass = (o) => `blur(${BACK.blur}px) opacity(${o})`;
 const glassFrame = (o) => ({ backdropFilter: glass(o), webkitBackdropFilter: glass(o) });
 // How much of the veil shows when the page in front has gone k of the way (0 at rest .. 1 gone). Thinning the veil
