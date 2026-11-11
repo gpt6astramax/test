@@ -6,6 +6,7 @@
 //   const page = ds.push(key);    // page.inner is where the new page's content goes; null if `key` is already on top
 //   ds.pop(); ds.popToRoot();
 //   ds.onChange((depth) => …);
+//   ds.onDepth((f) => …);         // how far behind the root page is, every frame: 0 in front, 1 one page over it, …
 //
 // Each pushed page is a gesture with sides [1] (swipe right = back). The layers below follow it:
 //   the page right below comes back from "behind" (smaller, lower, blurred, faint) into focus,
@@ -116,9 +117,21 @@ export function DepthStack(host) {
   let tidy = null;                // the pending whenQuiet() job that takes them out
   let pushing = 0;                // entrances under way: taps wait
   const listeners = [];
+  const depthListeners = [];
   const top = () => stack[stack.length - 1];
   const layers = () => [rootEl].concat(stack.map((p) => p.el));
   const emit = () => listeners.forEach((fn) => fn(stack.length));
+  // How far behind the root page is: the pages over it, the top one counted by how far in it is (its presence: 0 off
+  // screen .. 1 in place). What belongs to the root page and is not in its layer (the tab row) follows this.
+  let lastDepth = 0;
+  const depthNow = () => (stack.length ? stack.length - 1 + top().presence : 0);
+  function reportDepth() {
+    const f = depthNow();
+    if (f === lastDepth) return;
+    lastDepth = f;
+    depthListeners.forEach((fn) => fn(f));
+  }
+  const presenceAt = (p) => 1 - Math.min(1, (1 + OVER) * Math.max(0, p));
 
   // Tie a layer to the top page's scroll timeline (or untie it). Written only when it changes.
   function follow(el, name, timeline) {
@@ -167,7 +180,7 @@ export function DepthStack(host) {
   function veilTo(veil, o) { veil.style.webkitBackdropFilter = glass(o); veil.style.backdropFilter = glass(o); }
 
   function dropClocks(page) { if (page.clocks) { page.clocks.forEach((a) => a.cancel()); page.clocks = null; } }
-  function takeOut(page) { dropClocks(page); page.g.destroy(); page.el.remove(); if (page.veil) page.veil.remove(); }
+  function takeOut(page) { cancelAnimationFrame(page.raf); dropClocks(page); page.g.destroy(); page.el.remove(); if (page.veil) page.veil.remove(); }
   // Take out the pages that have left. Run when things are quiet, or just before the stack changes again.
   function flush() {
     if (tidy) { tidy.cancel(); tidy = null; }
@@ -184,6 +197,7 @@ export function DepthStack(host) {
     takeOut(page);
     arrange();
     emit();
+    reportDepth();
   }
   // The page has gone off screen by its own gesture. The stack is told now; the page itself, and the animations that
   // tied the layers below to it (they hold their end values), are taken away once things are quiet.
@@ -196,6 +210,7 @@ export function DepthStack(host) {
     setInert(top() ? top().el : rootEl, false);
     if (!tidy) tidy = whenQuiet(() => { tidy = null; flush(); });
     emit();
+    reportDepth();
   }
 
   function push(key) {
@@ -222,7 +237,7 @@ export function DepthStack(host) {
     const tied = supportsTimeline && !!g.timeline;
     // The leaving fade is on the page from the start (at rest it is fully opaque) and stays for its whole life.
     if (tied) { body.style.animation = 'ds-leave linear both'; body.style.animationTimeline = g.timeline; }
-    const page = { key, el, body, inner: body.querySelector('.page-in'), scroller: body.querySelector('.page'), g, tied, mode, veil, clocks: null, entering: moving };
+    const page = { key, el, body, inner: body.querySelector('.page-in'), scroller: body.querySelector('.page'), g, tied, mode, veil, clocks: null, entering: moving, presence: moving ? 0 : 1, raf: 0 };
     stack.push(page);
     g.on('change', (p) => {
       const tp = top();
@@ -233,6 +248,7 @@ export function DepthStack(host) {
       }
       if (left.length) flush();                             // the layers below must follow this page from here on
       if (page.entering && p > 0.02) entered();             // the finger took the page while it was coming in
+      if (!page.entering) { page.presence = presenceAt(p); reportDepth(); }
       const ls = layers();
       setInert(ls[ls.length - 2], !g.passing);              // once this page lets touches through, the one below is live
       if (!tied && !page.entering) {
@@ -248,8 +264,11 @@ export function DepthStack(host) {
     function entered() {
       if (!page.entering) return;
       page.entering = false;
+      cancelAnimationFrame(page.raf);
       if (stack.indexOf(page) !== -1) arrange();
       dropClocks(page);
+      page.presence = presenceAt(g.p);
+      reportDepth();
     }
     arrange();
     if (moving) {
@@ -262,6 +281,16 @@ export function DepthStack(host) {
       page.clocks = [u1.animate([frame(FRONT, blur), frame(BACK, blur)], timing)];
       if (u2) page.clocks.push(u2.animate([frame(BACK, blur), frame(FAR, blur)], timing));
       if (veil) page.clocks.push(veil.animate([glassFrame(0), glassFrame(1)], timing));
+      // how far in the page is, on the same clock, for what follows it outside the layers (reportDepth)
+      const clock = page.clocks[0];
+      const tick = () => {
+        if (!page.entering) return;
+        const t = clock.effect.getComputedTiming();
+        page.presence = t.progress == null ? 0 : t.progress;
+        reportDepth();
+        page.raf = requestAnimationFrame(tick);
+      };
+      page.raf = requestAnimationFrame(tick);
       pushing++;
       g.enter(1, { duration: PUSH_MS, easing: PUSH_EASE, travel: 0.16 }).then(() => {
         pushing--;
@@ -271,6 +300,7 @@ export function DepthStack(host) {
       });
     }
     emit();
+    reportDepth();
     return page;
   }
 
@@ -303,6 +333,7 @@ export function DepthStack(host) {
     has: (key) => stack.some((p) => p.key === key),
     push, pop, popToRoot,
     onChange: (fn) => { listeners.push(fn); },
+    onDepth: (fn) => { depthListeners.push(fn); fn(depthNow()); return () => { const i = depthListeners.indexOf(fn); if (i !== -1) depthListeners.splice(i, 1); }; },
     destroy() {
       if (tidy) tidy.cancel();
       host.removeEventListener('click', onClick, true);

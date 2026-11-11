@@ -8,19 +8,20 @@
 // capsule with the stripes just above and below it. The capsule is found in the screenshot itself, because a row
 // that is moving is no longer where the page said it was a frame ago. Sampled: at rest; while a page comes in and
 // after; during a back swipe (held half-way) and after; during a tab switch; and through the player's coming and
-// going in every chrome mode (src/lib/chrome-mode.js), including the moments right after it has gone.
+// going, including the moments right after it has gone. While a page covers the row (lib/chrome-cover.js) its capsule
+// is turned down on purpose; such samples are reported as thinned, not as failures. Whenever the row is whole, its
+// capsule must blur.
 //
 // Part 2, the page behind. In each depth mode (src/lib/depth-mode.js) the stripes are put on the page that goes
 // behind: under a pushed page and under the player they must be gone with 'veil' and 'filter', and still there with
 // 'none' (which shows that the measurement can tell).
 //
-//   npm run build && node tests/glass.js [scroll|js] [mode,mode…]        (needs Playwright with Chromium)
+//   npm run build && node tests/glass.js [scroll|js]        (needs Playwright with Chromium)
 const { chromium } = require('playwright');
 const http = require('http'), fs = require('fs'), path = require('path');
 const zlib = require('zlib');
 const ROOT = process.env.ROOT || path.join(__dirname, '..', '..');     // the folder that holds public/
 const DRIVER = process.argv[2] === 'js' ? 'js' : 'scroll';
-const MODES = (process.argv[3] || 'under,cover,top,sink,rise,left,fade,noglass,asis').split(',');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const PERIOD = 24;
@@ -73,11 +74,11 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
   const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   let failures = 0, measured = 0;
 
-  async function session(mode, depth) {
+  async function session(depth) {
     const ctx = await browser.newContext({ viewport: { width: 393, height: 852 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
     const page = await ctx.newPage();
     const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-    await page.addInitScript(([d, m, dp]) => { localStorage.setItem('depth-music:driver', d); localStorage.setItem('depth-music:chrome-4', m); localStorage.setItem('depth-music:depth', dp); }, [DRIVER, mode, depth]);
+    await page.addInitScript(([d, dp]) => { localStorage.setItem('depth-music:driver', d); localStorage.setItem('depth-music:depth', dp); }, [DRIVER, depth]);
     await page.goto(`http://127.0.0.1:${server.address().port}/depth-music/`); await sleep(1200);
     const cdp = await ctx.newCDPSession(page);
     const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
@@ -96,8 +97,9 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
       const h = document.querySelector('.dtb-haze'), c = document.querySelector('.chrome');
       if (!h || getComputedStyle(h).display === 'none') return { off: true };
       const r = h.getBoundingClientRect();
-      const o = getComputedStyle(c).getPropertyValue('--chrome-o').trim();
-      return { l: r.left, t: r.top, r: r.right, b: r.bottom, o: o === '' ? 1 : +o };
+      // how much of its own blur the capsule has at this moment (a page in front turns it down: lib/chrome-cover.js)
+      const m = /blur\(([\d.]+)px\)/.exec(getComputedStyle(h).backdropFilter || getComputedStyle(h).webkitBackdropFilter || '');
+      return { l: r.left, t: r.top, r: r.right, b: r.bottom, o: m ? +m[1] / 18 : 1, covered: c.inert };
     });
     // One sample of the tab row's glass: the stripes inside its capsule against the stripes just outside it.
     // expect: 'blur' | 'clear' | 'any'
@@ -122,9 +124,9 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
         else if (o < 0.2) verdict = 'not measurable here (what is behind is already flat)';
         else {
           measured++;
-          const dim = b0.o < 0.95 || b1.o < 0.95;             // the 'fade' way: the glass is being thinned on purpose
-          verdict = i / o < 0.25 ? 'blurring' : dim ? 'thinned (dimmed on purpose)' : 'CLEAR: not blurring';
-          detail = ` (stripes inside ${i.toFixed(2)}, outside ${o.toFixed(2)}${moving ? ', moving' : ''}${dim ? ', parts ' + Math.min(b0.o, b1.o).toFixed(2) : ''})`;
+          const dim = b0.o < 0.95 || b1.o < 0.95;             // covered by a page in front: turned down on purpose
+          verdict = i / o < 0.25 ? 'blurring' : dim ? 'thinned (covered, on purpose)' : 'CLEAR: not blurring';
+          detail = ` (stripes inside ${i.toFixed(2)}, outside ${o.toFixed(2)}${moving ? ', moving' : ''}${dim ? ', capsule at ' + Math.round(100 * Math.min(b0.o, b1.o)) + '%' : ''})`;
           if (expect !== 'any' && !dim && (verdict === 'blurring') !== (expect === 'blur')) { failures++; verdict = 'FAIL ' + verdict; }
         }
       }
@@ -141,7 +143,7 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
   // ====================================================================================================
   {
     console.log(`[${DRIVER}] the tab row's glass: pages and tabs`);
-    const s = await session('sink', 'none');
+    const s = await session('none');
     await s.stripesIn('.under');
     const tabs = await s.page.locator('.dtb').boundingBox();
     const tx = (i) => tabs.x + tabs.width * (i + 0.5) / 4, ty = tabs.y + tabs.height / 2;
@@ -167,11 +169,10 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
     await s.close();
   }
 
-  for (const mode of MODES) {
-    console.log(`[${DRIVER}] the tab row's glass: player, chrome mode "${mode}"`);
-    // asis keeps the row inside the layer that fades: there it is not asserted, only shown
-    const e = mode === 'asis' ? 'any' : 'blur';
-    const s = await session(mode, 'none');
+  {
+    console.log(`[${DRIVER}] the tab row's glass: the player`);
+    const e = 'blur';
+    const s = await session('none');
     await s.stripesIn('.under');
     const tabs = await s.page.locator('.dtb').boundingBox();
     await s.page.touchscreen.tap(tabs.x + tabs.width * 2.5 / 4, tabs.y + tabs.height / 2); await sleep(700);
@@ -199,7 +200,7 @@ const avg = (list) => { const v = list.filter((n) => n !== null); return v.lengt
   // ====================================================================================================
   for (const depth of ['veil', 'filter', 'none']) {
     console.log(`[${DRIVER}] the page behind, depth mode "${depth}"`);
-    const s = await session('sink', depth);
+    const s = await session(depth);
     const check = async (label, want) => {                    // want: 'sharp' | 'gone'
       const m = await s.sharpest();
       const ok = want === 'sharp' ? m > 0.2 : m < 0.08;

@@ -38,6 +38,8 @@ export const DepthStackView = React.forwardRef(function DepthStackView({ active,
     popToRoot() { if (stack.current) stack.current.popToRoot(); },
     scrollToTop() { if (stack.current) stack.current.rootPage.scrollTo({ top: 0, behavior: 'smooth' }); },
     get depth() { return stack.current ? stack.current.depth : 0; },
+    /** How far behind the root page is, every frame (lib/depth-stack.js onDepth). Returns the unsubscribe. */
+    onDepth(fn) { return stack.current ? stack.current.onDepth(fn) : () => {}; },
   }), [screens]);
   React.useImperativeHandle(ref, () => nav, [nav]);
 

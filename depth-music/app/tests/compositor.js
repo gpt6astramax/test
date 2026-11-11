@@ -1,7 +1,7 @@
 // Does what follows a gesture keep up when the main thread cannot?
 //
 // A finger-driven scroll is run by the browser's compositor and does not wait for the page's scripts. Whatever follows
-// it (the page behind coming back into focus, the tab row returning) has to be run there too. If the main thread has
+// it (the page behind coming back into focus) has to be run there too. If the main thread has
 // to deliver its frames, it trails the finger whenever that thread is busy, and that looks like dropped frames
 // although the page under the finger moves smoothly.
 //
@@ -12,6 +12,8 @@
 //   - it only changes once the block is over     -> the main thread does
 // The depth modes 'veil' and 'none' must follow. 'filter' is the control: an animated blur radius cannot run on
 // Chromium's compositor, so there the page behind is expected to freeze (reported, not asserted).
+// (The tab row is not checked here: it does not move, and while a page covers it its leaves are written from the
+// gestures' own events on the main thread, lib/chrome-cover.js, because no animation may be put on it.)
 //
 //   npm run build && node tests/compositor.js        (needs Playwright with Chromium)
 //
@@ -96,7 +98,7 @@ const lead = (img, x, y, ch) => { const p = img.px(x, y); return p[ch] - Math.ma
     const ctx = await browser.newContext({ viewport: { width: 393, height: 852 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
     const page = await ctx.newPage();
     const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-    await page.addInitScript((d) => { localStorage.setItem('depth-music:driver', 'scroll'); localStorage.setItem('depth-music:chrome-4', 'sink'); localStorage.setItem('depth-music:depth', d); }, depth);
+    await page.addInitScript((d) => { localStorage.setItem('depth-music:driver', 'scroll'); localStorage.setItem('depth-music:depth', d); }, depth);
     await page.goto(`http://127.0.0.1:${server.address().port}/depth-music/`); await sleep(1300);
     const cdp = await ctx.newCDPSession(page);
     const mark = (sel, css) => page.evaluate(([s, c]) => { const d = document.createElement('div'); d.className = 'test-mark'; d.style.cssText = 'position:absolute;z-index:50;pointer-events:none;' + c; document.querySelector(s).appendChild(d); }, [sel, css]);
@@ -141,11 +143,10 @@ const lead = (img, x, y, ch) => { const p = img.px(x, y); return p[ch] - Math.ma
     await page.evaluate(() => document.querySelector('.tabview.on .page').scrollTo(0, 400)); await sleep(300);
     await page.locator('.tabview.on [aria-label^="播放 "]').first().tap(); await sleep(1600);
     // the player's own content is hidden so that the markers behind it can be seen: red on the sheet, green on what
-    // lies under it, blue on the tab row
+    // lies under it
     await page.addStyleTag({ content: '.sheet-in{visibility:hidden}' });
     await mark('.sheet-panel', 'left:20px;top:300px;width:40px;height:40px;background:#ff0000');
     await mark('.under', 'left:96px;top:200px;width:200px;height:36px;background:#00ff00');
-    await mark('.chrome', 'left:140px;top:-30px;width:60px;height:20px;background:#0000ff');
     await sleep(500);
     counts = await run(page, cdp,
       () => { document.querySelector('.sheet').scrollTo({ top: 0, behavior: 'smooth' }); },
@@ -154,15 +155,9 @@ const lead = (img, x, y, ch) => { const p = img.px(x, y); return p[ch] - Math.ma
         for (let y = 0; y < img.h; y++) if (lead(img, Math.round(40 * k), y, 0) > 60) { redY = Math.round(y / k); break; }
         let gw = 0, gmax = 0;
         for (let yy = 150; yy <= 300; yy += 4) { const y = Math.round(yy * k); let a = -1, b = -1; for (let x = 0; x < img.w; x++) { const d = lead(img, x, y, 1); if (d > gmax) gmax = d; if (d > 40) { if (a < 0) a = x; b = x; } } if (a >= 0) gw = Math.max(gw, Math.round((b - a + 1) / k)); }
-        let blueY = null;
-        for (let y = 0; y < img.h; y++) if (lead(img, Math.round(196 * k), y, 2) > 60) { blueY = Math.round(y / k); break; }
-        return { mover: redY, followers: { under: `${Math.round(gw / 2)} ${Math.round(gmax / 6)}`, row: blueY } };
+        return { mover: redY, followers: { under: `${Math.round(gw / 2)} ${Math.round(gmax / 6)}` } };
       });
     say('player', counts, 'under', 'player: what lies under it');
-    // the tab row moves by a transform in every depth mode: it is asserted in the control too
-    const rowOk = follows(counts, 'row');
-    if (!rowOk) failed++;
-    console.log(`  ${'player: the tab row'.padEnd(34)} ${rowOk ? 'follows (compositor)' : 'FAIL freezes (main thread)'}: changed in ${counts.row} frames while the player moved in ${counts.mover}`);
     if (errs.length) { failed++; console.log('  page errors', errs); }
     await ctx.close();
   }

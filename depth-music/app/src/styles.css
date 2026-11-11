@@ -73,15 +73,10 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 /* Everything a transition moves keeps a layer of its own for good (will-change: transform). A layer that comes and
    goes with each transition is a change under the finger at the very moment the transition ends; see lib/quiet.js. */
 .under { transform-origin: 50% 40%; will-change: transform }
-/* The chrome may be moved, and nothing else: no opacity and no filter on it or on anything it sits in, not even an
-   opacity animation that stays at 1 or will-change: opacity. Any of those and the glass inside it stops blurring. To dim it, --chrome-o dims
-   its parts (the tab row's icons and dot, and the strength of its glass through opacity() in the backdrop-filter).
-   --chrome-o is a registered number, 1 unless something sets it, so it can be animated and is never undefined. */
-@property --chrome-o { syntax: '<number>'; inherits: true; initial-value: 1 }
-.chrome { will-change: transform; --dtb-o: var(--chrome-o, 1) }
-.chrome .shell { background: color-mix(in srgb, var(--glass) calc(var(--chrome-o, 1) * 100%), transparent); border-color: color-mix(in srgb, var(--glass-edge) calc(var(--chrome-o, 1) * 100%), transparent);
-  -webkit-backdrop-filter: blur(26px) saturate(1.7) opacity(var(--chrome-o, 1)); backdrop-filter: blur(26px) saturate(1.7) opacity(var(--chrome-o, 1)) }
-.chrome .shell > * { opacity: var(--chrome-o, 1) }
+/* The chrome (the tab row, and the play bar above it) keeps a layer of its own. Nothing it sits in may carry an
+   opacity below 1, a filter, or an animation of either: the glass inside it would stop blurring. It belongs to the
+   root pages; a page in front covers it where it is (lib/chrome-cover.js), by values on its leaves only. */
+.chrome { will-change: transform }
 /* On a wide screen the column's edges fade to the ground, so a page coming in is not cut off by a straight line. Two
    strips of the ground's colour over the edges: a mask over the pages would have every frame of every page turn
    drawn into a surface of its own first. */
@@ -126,6 +121,8 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 .page-in { display: flex; flex-direction: column; gap: 28px; min-height: calc(100% + 1px); box-sizing: border-box;
   padding: calc(var(--sat, 0px) + 18px) var(--gutter-r) calc(var(--sab, 0px) + var(--chrome) + 56px) var(--gutter-l) }
 .layer:not(.root) .page-in { padding-top: calc(var(--sat, 0px) + 66px) }
+/* a page over a root page covers the tab row: it keeps no room for it at the bottom */
+.layer:not(.root) .page-in { padding-bottom: calc(var(--sab, 0px) + 40px) }
 .nav { position: absolute; z-index: 2; top: calc(var(--sat, 0px) + 10px); left: var(--gutter-l); right: var(--gutter-r); display: flex; justify-content: space-between; pointer-events: none }
 .nav .tap { pointer-events: auto; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; color: var(--fg); transition: opacity .15s, transform .25s var(--spring) }
 .nav .tap:active { opacity: .6; transform: scale(.94) }
@@ -171,12 +168,7 @@ html.device-short-vh .app { position: fixed; left: 0; right: 0; top: calc(-1 * e
 /* What lies under the sheet drops back, tied to the sheet (ui/PlayerSheet.web.jsx). Over it, and under the chrome,
    lies the veil that puts it out of focus: glass that is only there while a player is. */
 .sheet-veil { position: absolute; inset: 0; z-index: 4; pointer-events: none; visibility: hidden }
-/* chrome mode 'cover': the veil lies over the tab row as well. Nothing is done to the row itself. */
-.sheet-veil.over { z-index: 6 }
-/* chrome mode 'top': the tab row stays in front of the player, as it is in front of every other page; the player's
-   content then ends clear of it, as a page's does */
-.chrome.top { z-index: 25 }
-.chrome-top .sheet-in { padding-bottom: calc(var(--sab, 0px) + var(--chrome) + 56px) }
+
 
 #toast { position: absolute; z-index: 30; left: 50%; bottom: calc(var(--sab, 0px) + var(--chrome) + 14px); transform: translate(-50%, 10px); padding: 9px 16px; border-radius: 999px;
   font-size: 13.5px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .25s, transform .35s var(--spring) }

@@ -8,18 +8,13 @@
 // It is a vertical ScrollGesture (sides [1]): with the 'scroll' driver dragging it is native scrolling, so it follows
 // the finger and snaps like a system sheet. It comes in with enter(), an animation and not a gesture.
 //
-// Three things follow the sheet, each in the way that keeps it on the compositor and keeps glass working:
+// What follows the sheet:
 //   - what lies under it: transform and opacity. Its blur is either a veil laid over it (glass of fixed radius whose
 //     strength is the opacity() of its backdrop-filter) or, in the 'filter' depth mode, its own filter: blur()
 //     (lib/depth-mode.js says why the first is the default in Chromium);
-//   - the floating chrome (the tab row): by default nothing at all is done to it. It stays where it is and the
-//     player covers it in the natural way: the sheet carries a sheet of glass of its own ('under'), which passes over
-//     the row on the way up and uncovers it on the way down. (Or the veil lies over it, 'cover'; or it stays in front
-//     of the player, 'top'.) The ways that did something to it are still here to compare with: they moved it, dimmed
-//     it, or switched its glass off while the player was up. In the ways that do move it, it leaves by a transform, never by opacity (glass stops blurring as soon
-//     as anything it sits in has an opacity below 1, an opacity animation or a filter); 'fade' dims the row's own
-//     parts instead, the glass through opacity() in its backdrop-filter. It is given back the moment the sheet has gone;
-//   - the handle's two halves: a rotation.
+//   - the handle's two halves: a rotation;
+//   - the tab row is not touched here. It belongs to the root pages, and the player covers it as any page in front
+//     does: onCover(f) tells how far up the sheet is (0 .. 1), and lib/chrome-cover.js puts the row as far behind.
 //
 // As in the page stack: what follows the sheet is moved by the entrance's own animations while it comes up and tied
 // to the sheet's timeline once it is up (nobody is scrolling what lies under it then); and after the sheet has gone
@@ -47,29 +42,14 @@ const underFrames = (blur) => [
   blur ? { transform: BACK_T, filter: `blur(${BACK.blur}px)`, opacity: BACK.o } : { transform: BACK_T, opacity: BACK.o },
 ];
 
-// The ways the chrome leaves. `ret`: it starts to return once the sheet has been pulled this far down. `ms`: how
-// long leaving takes, as a share of the sheet's entrance. What it moves by is measured when the sheet opens.
-const AWAY = {
-  sink: { ret: 0.35, ms: 0.55 },   // down, out of the screen
-  rise: { ret: 0, ms: 1 },         // up by one screen: it rides on the sheet's top edge, at the sheet's speed
-  left: { ret: 0.35, ms: 0.55 },   // out to the left
-  fade: { ret: 0.35, ms: 0.45 },   // in place: its parts dim, its glass thins (never the opacity of the row itself)
-};
-
 let styled = false;
 function styles() {
   if (styled) return;
   styled = true;
   const hold = (100 * OVER / (1 + OVER)).toFixed(2) + '%';
-  const late = (ret) => (100 * (1 - ret / (1 + OVER))).toFixed(2) + '%';
   // "At rest" is held from 99% on: at rest the sheet's timeline is one pixel short of its end (the gesture keeps it
   // there, so that these animations can run on the compositor), and everything must show exactly its resting state.
   const rest = '99%,100%';
-  // --chrome-o: how present the chrome's parts are (1 .. 0). A registered number (styles.css registers it with
-  // @property; this is for a browser that only has the script way), so it can be animated.
-  if (typeof CSS !== 'undefined' && CSS.registerProperty) {
-    try { CSS.registerProperty({ name: '--chrome-o', syntax: '<number>', inherits: true, initialValue: '1' }); } catch (e) { /* registered already */ }
-  }
   const st = document.createElement('style');
   st.setAttribute('data-player-sheet', '');
   st.textContent =
@@ -80,17 +60,6 @@ function styles() {
     `.under.sh-back{transform:var(--sh-t);opacity:var(--sh-o)}.under.sh-back.sh-bf{filter:blur(var(--sh-blur))}` +
     // the veil over it
     veilKeyframes('sh-v', OVER) +
-    // the chrome: by a transform (--sh-x / --sh-y are measured when the sheet opens), or by dimming its parts
-    `@keyframes sh-c-sink{0%,${hold}{transform:none}${late(AWAY.sink.ret)},100%{transform:translate(var(--sh-x,0px),var(--sh-y,0px))}}` +
-    `@keyframes sh-c-left{0%,${hold}{transform:none}${late(AWAY.left.ret)},100%{transform:translate(var(--sh-x,0px),var(--sh-y,0px))}}` +
-    `@keyframes sh-c-rise{0%,${hold}{transform:none}${rest}{transform:translate(var(--sh-x,0px),var(--sh-y,0px))}}` +
-    `@keyframes sh-c-fade{0%,${hold}{--chrome-o:1}${late(AWAY.fade.ret)},100%{--chrome-o:0}}` +
-    // the chrome stays, its own blur is off
-    `.sh-noglass .dtb-haze{display:none}` +
-    // 'under': the sheet's own glass. Behind the sheet's content (z-index -1 in the sheet's stacking context, so that
-    // it blurs what is behind the sheet and not the sheet's content), as large as the sheet, moving with it. A leaf
-    // of its own, not the panel itself: glass that has glass inside it is drawn as a flattened picture in Safari.
-    `.sheet-glass{position:absolute;inset:0;z-index:-1;pointer-events:none;-webkit-backdrop-filter:blur(${BACK.blur}px);backdrop-filter:blur(${BACK.blur}px)}` +
     // the handle's two halves: straight once the sheet has been pulled a little, bent into the arrow at rest
     `@keyframes sh-hl{0%,${STRAIGHT}{transform:none}${rest}{transform:rotate(${BEND}deg)}}` +
     `@keyframes sh-hr{0%,${STRAIGHT}{transform:none}${rest}{transform:rotate(-${BEND}deg)}}`;
@@ -102,13 +71,10 @@ function styles() {
  * onClosed  called as soon as it has gone (swiped down, or closed from outside and done sliding)
  * under     ref to the element that lies under the sheet and recedes
  * veil      ref to an element that covers `under` and nothing else: the glass that puts it out of focus
- * aside     ref to the floating chrome
- * asideMode what it does while the player is up: 'under' | 'cover' | 'top' (nothing at all is done to it: the sheet's
- *           own glass passes over it, or the veil lies over it, or it stays in front of the player),
- *           'sink' | 'rise' | 'left' | 'fade' (it is outside `under` and leaves),
- *           'noglass' (inside `under`, its own blur off meanwhile), 'asis' (inside `under`, left alone)
+ * onCover   called every frame with how far up the sheet is, 0 (gone) .. 1 (up): for what belongs to the screen it
+ *           covers but is not in `under` (the tab row)
  */
-export function PlayerSheet({ open, onClosed, under, veil, aside, asideMode = 'under', children }) {
+export function PlayerSheet({ open, onClosed, under, veil, onCover, children }) {
   const [state, setState] = React.useState({ mounted: open, gen: 0 });
   const tidy = React.useRef(null);
   const latest = React.useRef(onClosed);
@@ -124,10 +90,10 @@ export function PlayerSheet({ open, onClosed, under, veil, aside, asideMode = 'u
     if (latest.current) latest.current();
     tidy.current = whenQuiet(() => { tidy.current = null; setState((s) => ({ ...s, mounted: false })); });
   };
-  return <Surface key={state.gen} open={open} under={under} veil={veil} aside={aside} asideMode={asideMode} onGone={onGone}>{children}</Surface>;
+  return <Surface key={state.gen} open={open} under={under} veil={veil} onCover={onCover} onGone={onGone}>{children}</Surface>;
 }
 
-function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
+function Surface({ open, onGone, under, veil, onCover, children }) {
   styles();
   const el = React.useRef(null);
   const body = React.useRef(null);
@@ -136,6 +102,8 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
   const left = React.useRef(false);
   const latest = React.useRef(onGone);
   latest.current = onGone;
+  const coverTo = React.useRef(onCover);
+  coverTo.current = onCover;
 
   React.useLayoutEffect(() => {
     const u = under && under.current;
@@ -143,13 +111,12 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
     g.current = gesture;
     const tied = supportsTimeline && !!gesture.timeline;
     const tie = (node, name) => { node.style.animation = name + ' linear both'; node.style.animationTimeline = gesture.timeline; };
-    // 'cover' hides the tab row under the veil, so there it is a veil whatever the depth setting says
-    const depth = asideMode === 'cover' ? 'veil' : getDepthMode();
+    const depth = getDepthMode();
     const blur = depth === 'filter';                          // what lies under carries the blur itself
     const v = depth === 'veil' && veil ? veil.current : null; // or a veil over it does
-    const chrome = aside && aside.current;
-    const away = AWAY[asideMode];                             // set when the chrome leaves; then `a` is the chrome
-    const a = away ? chrome : null;
+    // how far up the sheet is, for what it covers outside `under` (0 .. 1); written only when it changes
+    let shown = -1, coverRaf = 0;
+    const cover = (f) => { f = Math.max(0, Math.min(1, f)); if (f !== shown) { shown = f; if (coverTo.current) coverTo.current(f); } };
     // While the sheet is coming up, nothing is tied to its timeline: what follows it is moved by animations on the
     // entrance's clock that hold their end, and tied once the entrance is over. (Chromium can run a scroll-driven
     // animation on the compositor only if it could start it there, and it cannot under another animation of the
@@ -162,26 +129,9 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
       entering = false;
       if (tied) ties.forEach(([node, name]) => tie(node, name));
       clocks.splice(0).forEach((c) => c.cancel());
+      cancelAnimationFrame(coverRaf);                         // from here on, the sheet's own position tells
+      if (!left.current) cover(1 - Math.min(1, (1 + OVER) * Math.max(0, gesture.p)));
     };
-
-    // ---- the chrome: where it goes is measured now, in px (a transform is all that may touch it)
-    let ax = 0, ay = 0;
-    const chromeAt = (f) => {                                 // f: how far away, 0 .. 1
-      if (asideMode === 'fade') a.style.setProperty('--chrome-o', String(1 - f));
-      else a.style.transform = f ? `translate(${(ax * f).toFixed(1)}px, ${(ay * f).toFixed(1)}px)` : 'none';
-    };
-    if (a) {
-      const r = a.getBoundingClientRect(), frame = el.current.getBoundingClientRect();
-      if (asideMode === 'sink') ay = frame.bottom - r.top + 16;
-      if (asideMode === 'rise') ay = -frame.height;
-      if (asideMode === 'left') ax = -(r.right - frame.left + 16);
-      a.inert = true;
-      a.style.setProperty('--sh-x', ax + 'px'); a.style.setProperty('--sh-y', ay + 'px');
-      chromeAt(1);                                            // where it is while the player is up; a tie overrides this
-      ties.push([a, 'sh-c-' + asideMode]);
-    }
-    // (taken off again only with the ties below: until then what the chrome sits in still has an opacity animation)
-    if (chrome && asideMode === 'noglass') chrome.classList.add('sh-noglass');
 
     // ---- what lies under is tied to the sheet from the start: it comes back into focus as the sheet is pulled down
     if (u) {
@@ -197,30 +147,20 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
     if (tied) halves.forEach((h, i) => tie(h, i ? 'sh-hr' : 'sh-hl'));
     let flat = false;
 
-    // The row is given back the moment the sheet has gone: the animation that tied it to the sheet and the styles that
-    // placed it come off at once. (What lies under waits until things are quiet, because a finger may be scrolling a
-    // page in it; the row is neither scrolled nor an ancestor of anything that is.) The less time anything is attached
-    // to the row, the better: on a real device its glass has been seen to drop out for a moment around this point.
-    let rowFreed = false;
-    const freeRow = () => {
-      if (!a || rowFreed) return;
-      rowFreed = true;
-      ['animation', 'animation-timeline', 'transform', '--chrome-o', '--sh-x', '--sh-y'].forEach((k) => a.style.removeProperty(k));
-      if (a.inert) a.inert = false;
-    };
     const gone = () => {
       if (left.current) return;
       left.current = true;
       if (entering) entered();
       if (u && u.inert) u.inert = false;
-      freeRow();
+      cover(0);                                               // what it covered is whole again at once
       el.current.inert = true;
       latest.current();
     };
     const offChange = gesture.on('change', (p) => {
       if (!tied && flat !== p > 0.03) { flat = p > 0.03; handle.current.classList.toggle('flat', flat); }
       if (entering && p > 0.02) entered();                   // the finger took the sheet while it was coming up
-      if (gesture.passing) { if (u && u.inert) u.inert = false; if (a && a.inert) a.inert = false; }
+      if (gesture.passing && u && u.inert) u.inert = false;
+      if (!entering && !left.current) cover(1 - Math.min(1, (1 + OVER) * Math.max(0, p)));
       if (tied || entering) return;
       const k = Math.min(1, (1 + OVER) * Math.max(0, p)), L = (from, to) => from + (to - from) * k;
       if (u) {
@@ -229,28 +169,32 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
         u.style.opacity = String(L(BACK.o, 1));
       }
       if (v) veilTo(veilAt(k));
-      if (a && !rowFreed) chromeAt(1 - Math.max(0, Math.min(1, (k - away.ret) / (1 - away.ret))));
     });
     const offSettle = gesture.on('settle', (side) => { if (side === 1) gone(); });
-    if (reduced()) entered();
+    if (reduced()) { cover(1); entered(); }
     else {
       // they recede on the entrance's clock and hold their end until the ties take over
       const run = (node, frames, ms) => clocks.push(node.animate(frames, { duration: ms, easing: EASE, fill: 'forwards' }));
       if (u) run(u, underFrames(blur), MS);
       if (v) run(v, [glassFrame(0), glassFrame(1)], MS);
-      if (a) run(a, asideMode === 'fade' ? [{ '--chrome-o': 1 }, { '--chrome-o': 0 }] : [{ transform: 'none' }, { transform: `translate(${ax}px, ${ay}px)` }], MS * away.ms);
+      // how far up it is, on the same clock, frame by frame
+      const clock = clocks[0], t0 = performance.now();
+      const step = () => {
+        if (!entering) return;
+        const t = clock && clock.effect ? clock.effect.getComputedTiming() : null;
+        cover(t && t.progress != null ? t.progress : Math.min(1, (performance.now() - t0) / MS));
+        coverRaf = requestAnimationFrame(step);
+      };
+      step();
       gesture.enter(1, { duration: MS, easing: EASE, travel: 1 / (1 + OVER) }).then(entered);
     }
     const onKey = (e) => { if (e.key === 'Escape' && !left.current) gesture.go(1); };
     document.addEventListener('keydown', onKey);
-    // 'under', 'cover': the row lies under the sheet, so no touch reaches it; the keyboard is kept off it from here,
-    // without touching the row (no inert, no attribute): focus that lands on it is let go again
-    const offRow = (asideMode === 'under' || asideMode === 'cover') && chrome ? (e) => { if (!left.current && chrome.contains(e.target)) e.target.blur(); } : null;
-    if (offRow) document.addEventListener('focusin', offRow);
     return () => {
       offChange(); offSettle();
       document.removeEventListener('keydown', onKey);
-      if (offRow) document.removeEventListener('focusin', offRow);
+      cancelAnimationFrame(coverRaf);
+      cover(0);
       entering = false;
       clocks.splice(0).forEach((c) => c.cancel());
       gesture.destroy();
@@ -258,9 +202,6 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
       const untie = (node, props) => props.forEach((k) => node.style.removeProperty(k));
       if (u) { untie(u, ['animation', 'animation-timeline', 'transform', 'filter', 'opacity']); u.classList.remove('sh-back', 'sh-bf'); if (u.inert) u.inert = false; }
       if (v) untie(v, ['animation', 'animation-timeline', 'visibility', '-webkit-backdrop-filter', 'backdrop-filter']);
-      freeRow();
-      // (only where it was put on: classList.remove() of a class that is not there still writes the attribute)
-      if (chrome && asideMode === 'noglass') chrome.classList.remove('sh-noglass');
     };
   }, []);                                                        // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -270,7 +211,7 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
     if (reduced()) {
       left.current = true;
       if (under && under.current && under.current.inert) under.current.inert = false;
-      if (aside && aside.current && aside.current.inert) aside.current.inert = false;   // (only if it was set: an untouched row stays untouched)
+      if (coverTo.current) coverTo.current(0);
       latest.current();
     } else g.current.go(1);
   }, [open]);                                                    // eslint-disable-line react-hooks/exhaustive-deps
@@ -280,7 +221,6 @@ function Surface({ open, onGone, under, veil, aside, asideMode, children }) {
     <div ref={el} className="sheet" role="dialog" aria-label="播放器">
       <div ref={body}>
         <div className="sheet-panel">
-          {asideMode === 'under' ? <i className="sheet-glass" aria-hidden="true" /> : null}
           <label ref={handle} className="sheet-handle" role="button" tabIndex={0} aria-label="收起播放器"
             onClick={(e) => { if (!(e.target.matches && e.target.matches('.hsw'))) close(); }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); close(); } }}>

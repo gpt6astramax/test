@@ -20,6 +20,8 @@
 //   in DESIGN.md, and static/glass-test.html to look at on a device). So: move the row with transforms only. To
 //   fade it, set --dtb-o (1 .. 0) on it or on an ancestor: the icons and the dot dim, and the glass thins through
 //   opacity() inside its backdrop-filter.
+// - It belongs to the root pages. A page that comes over it (a pushed page, a full-screen sheet) covers it where it
+//   is: coverDotTabBar(bar, f) below. The row never moves for that, and the page gets no glass of its own.
 // - Put it in a positioned container at the bottom of the screen. Props: height (default 52), haze (default true),
 //   feather (default false; with it, leave ~26 px below the row so the blur can clear before the screen's edge),
 //   style, className.
@@ -88,6 +90,46 @@ export function DotTabBar({ tabs, index = 0, onChange, onReselect, height = 52, 
       ))}
     </label>
   );
+}
+
+// ---- covered by the page in front
+// f: how far behind the root page the row belongs to is. 0 = in front (as always), 1 = right behind the page in front,
+// 2 = two pages back. The row goes as far out of focus, in place:
+//   icons and dot   blur and fade exactly as the page behind does (20 px and .5 at 1; 40 px and 0 at 2); blur: false
+//                   leaves them sharp (a depth that only fades)
+//   capsule         its own blur turned down, as the cube of how present the row is: it never shows as a sharp-edged
+//                   frosted capsule over a page that is out of focus, and it forms together with the icons on the way
+//                   back. It stays a backdrop-filter all along (blur(0px) at the far end), so the glass is never
+//                   rebuilt on the way back
+// Only these leaves are written to, by plain values: nothing the capsule sits in, and no animation, because glass
+// stops blurring as soon as anything it sits in has an opacity below 1, a filter, or an animation of either. At 0
+// every value written is taken off again, and the row is exactly what the stylesheet makes it.
+const DEPTH = [{ b: 0, o: 1 }, { b: 20, o: 0.5 }, { b: 40, o: 0 }];
+export function coverDotTabBar(bar, f, { blur = true } = {}) {
+  if (!bar) return;
+  f = Math.max(0, Math.min(2, +f || 0));
+  const st = bar.dtbCover || (bar.dtbCover = { f: 0, r: 18 });
+  // nothing is written when nothing has changed (a value written again still counts as a change)
+  if (f === st.f || (Math.abs(f - st.f) < 0.002 && f !== 0 && f !== 1 && f !== 2)) return;
+  const leaves = bar.querySelectorAll('.dtb-item, .dtb-ink'), haze = bar.querySelector('.dtb-haze');
+  if (f === 0) {
+    st.f = 0;
+    leaves.forEach((n) => { n.style.removeProperty('filter'); n.style.removeProperty('opacity'); });
+    if (haze) { haze.style.removeProperty('-webkit-backdrop-filter'); haze.style.removeProperty('backdrop-filter'); }
+    return;
+  }
+  if (st.f === 0 && haze) {                                       // the capsule's own blur, as the stylesheet has it
+    const cs = getComputedStyle(haze), m = /blur\(([\d.]+)px\)/.exec(cs.backdropFilter || cs.webkitBackdropFilter || '');
+    st.r = m ? +m[1] : 18;
+  }
+  st.f = f;
+  const i = Math.min(1, Math.floor(f)), t = f - i, a = DEPTH[i], b = DEPTH[i + 1];
+  const px = blur ? a.b + (b.b - a.b) * t : 0, op = a.o + (b.o - a.o) * t;
+  leaves.forEach((n) => { n.style.filter = px > 0.05 ? `blur(${px.toFixed(2)}px)` : 'none'; n.style.opacity = String(+op.toFixed(3)); });
+  if (haze) {
+    const g = `blur(${(st.r * Math.pow(1 - Math.min(1, f), 3)).toFixed(2)}px)`;
+    haze.style.webkitBackdropFilter = g; haze.style.backdropFilter = g;
+  }
 }
 
 export default DotTabBar;

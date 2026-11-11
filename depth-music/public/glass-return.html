@@ -97,7 +97,7 @@
     <div class="stage"><div class="behind" style="animation:recede linear both;animation-timeline:--r11"><i></i></div><div class="wrap"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div>
     <div class="slider" style="scroll-timeline:--r11 x"><div><span>← 拖这里 →</span><span>← 拖这里 →</span><span>← 拖这里 →</span></div></div></div>
 
-  <div class="case" style="timeline-scope:--r12"><p>R12 · 底栏上面再盖一层毛玻璃罩，罩的浓淡跟着滚动走<small>「不动，原地变虚」方案的结构；默认方案也是底栏上面有一层毛玻璃经过，只是那层玻璃跟着播放器移动，浓淡不变。滑条在最左时罩是透明的，底栏应当正常；往右拖，底栏和条纹一起变虚。Chromium：<span class="ok">如上</span><span class="nosda">这个浏览器不支持滚动驱动动画，这一格不会动。</span></small></p>
+  <div class="case" style="timeline-scope:--r12"><p>R12 · 底栏上面再盖一层毛玻璃罩，罩的浓淡跟着滚动走<small>两层毛玻璃相叠。App 里不用这种结构，留着对照。滑条在最左时罩是透明的，底栏应当正常；往右拖，底栏和条纹一起变虚。Chromium：<span class="ok">如上</span><span class="nosda">这个浏览器不支持滚动驱动动画，这一格不会动。</span></small></p>
     <div class="stage"><div class="wrap"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div><div class="veil over" style="animation:thin linear both;animation-timeline:--r12"></div></div>
     <div class="slider" style="scroll-timeline:--r12 x"><div><span>← 拖这里 →</span><span>← 拖这里 →</span><span>← 拖这里 →</span></div></div></div>
 
@@ -105,9 +105,9 @@
     <div class="stage"><div class="veil below"></div><div class="wrap"><div class="row"><i class="haze"></i><b></b><b></b><b></b><b></b></div></div></div></div>
 
   <div class="note">
-    如果第一部分里有哪一格露出清晰条纹，原因就是那一项，旧的几种“底栏离开”方案可以对着它改。<br>
+    如果第一部分里有哪一格露出清晰条纹，原因就是那一项。<br>
     如果只有 R11 不正常，问题在底栏后面那一层，和底栏自己无关。<br>
-    默认方案（底栏不动、被播放器遮住）里，底栏自己什么都不加，对应 R1、R2、R13；被遮住的那一刻对应 R12。
+    App 现在的结构：底栏自己只有这一层毛玻璃，容器上什么都不加，对应 R1、R2；后面那一页的虚化在 Safari 上是普通滤镜，对应 R10、R11。R12、R13 是两层毛玻璃相叠的两种情形，App 里不用。
   </div>
 </main>
 <script>
