@@ -1,0 +1,16 @@
+{
+  "name": "App Template",
+  "short_name": "App",
+  "description": "A web app that is also a PWA and an app: gestures and routing from the framework, one style on top.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f2f2f0",
+  "theme_color": "#f2f2f0",
+  "icons": [
+    { "src": "icons/192x192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/512x512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
