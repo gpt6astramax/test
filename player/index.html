@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>player 测试页</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; --bg: #0f1012; --panel: #17191c; --line: #2a2d32; --text: #d9dce1; --dim: #8b9099; --accent: #6ea8fe; --ok: #5fd08a; --warn: #f0b860; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); }
+  main { max-width: 1180px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+  .env { color: var(--dim); font-size: 12px; margin-bottom: 12px; display: flex; gap: 6px 14px; flex-wrap: wrap; }
+  .env b { font-weight: 500; color: var(--text); }
+  .env .ok { color: var(--ok); } .env .no { color: var(--warn); }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  button, select, input[type=text], input[type=number], .pick { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
+  button, .pick { cursor: pointer; }
+  button:hover, .pick:hover { border-color: var(--accent); }
+  .pick { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 600; }
+  .pick input { display: none; }
+  input[type=text] { flex: 1; min-width: 180px; }
+  input[type=number] { width: 64px; }
+  label { color: var(--dim); display: inline-flex; gap: 6px; align-items: center; }
+  #stage { position: relative; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  #stage.drag { border-color: var(--accent); }
+  #hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); text-align: center; pointer-events: none; z-index: 2; }
+  #live { position: absolute; left: 8px; top: 8px; z-index: 3; background: rgba(0, 0, 0, .6); border-radius: 6px; padding: 4px 8px; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre; pointer-events: none; }
+  #live:empty { display: none; }
+  #seek { flex: 1; min-width: 120px; accent-color: var(--accent); }
+  #time { font-variant-numeric: tabular-nums; color: var(--dim); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+  h2 { font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--dim); }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 2px 0; vertical-align: top; }
+  td:first-child { color: var(--dim); width: 7.5em; white-space: nowrap; }
+  td:last-child { font-variant-numeric: tabular-nums; word-break: break-word; }
+  #chart { width: 100%; height: 70px; display: block; margin-top: 6px; }
+  #log { font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--dim); white-space: pre-wrap; max-height: 9em; overflow: auto; margin: 0; }
+  .err { color: #ff7b7b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>player 测试页 · H.265 / AV1</h1>
+  <div class="env" id="env"></div>
+  <div class="env err" id="warn" hidden></div>
+
+  <div class="bar">
+    <label class="pick">选择本地视频<input id="file" type="file" accept="video/*,.mkv,.mp4,.mov,.webm,.ts,.m2ts,.flv,.hevc,.h265,.ivf,.obu"></label>
+    <input id="url" type="text" placeholder="或者填视频地址（需支持 Range，跨域要有 CORS 头）">
+    <button id="open">打开</button>
+  </div>
+  <div class="bar">
+    <label>解码 <select id="mode"><option value="auto">自动（能原生就原生）</option><option value="native">只用浏览器原生</option><option value="wasm">强制 WASM 软解</option></select></label>
+    <label>渲染 <select id="renderer"><option value="auto">自动（WebGPU 优先）</option><option value="webgpu">WebGPU</option><option value="webgl2">WebGL2</option></select></label>
+    <label>线程 <input id="threads" type="number" min="1" max="32" placeholder="全部"></label>
+  </div>
+
+  <div id="stage"><div id="hint">选择或拖入一个视频文件<br>文件只在本机浏览器里解码，不会上传</div><div id="live"></div></div>
+
+  <div class="bar">
+    <button id="toggle">播放</button>
+    <input id="seek" type="range" min="0" max="1000" value="0">
+    <span id="time">0:00 / 0:00</span>
+    <label><input id="muted" type="checkbox"> 静音</label>
+    <input id="volume" type="range" min="0" max="1" step="0.01" value="1" style="width:90px;accent-color:var(--accent)">
+  </div>
+
+  <div class="grid">
+    <section><h2>视频参数</h2><table id="params"><tr><td colspan="2" style="color:var(--dim)">未加载</td></tr></table></section>
+    <section><h2>实时状态</h2><table id="stats"><tr><td colspan="2" style="color:var(--dim)">未播放</td></tr></table><canvas id="chart"></canvas></section>
+  </div>
+  <section style="margin-top:12px"><h2>事件</h2><pre id="log"></pre></section>
+</main>
+
+<script type="module">
+// This host cannot send the isolation headers that wasm threads need; a service worker adds them.
+if (!crossOriginIsolated && 'serviceWorker' in navigator && isSecureContext) {
+  await navigator.serviceWorker.register('./sw.js', { scope: './' });
+  await navigator.serviceWorker.ready;
+  if (!sessionStorage.getItem('coi-reload')) {
+    sessionStorage.setItem('coi-reload', '1');
+    location.reload();
+  }
+}
+
+const { Player } = await import('./dist/player.js');
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+const fmtRate = (b) => (b >= 1e6 ? (b / 1e6).toFixed(2) + ' Mbps' : b > 0 ? Math.round(b / 1e3) + ' kbps' : '未知');
+const CONTAINERS = { 'mov,mp4,m4a,3gp,3g2,mj2': 'MP4 / MOV', 'matroska,webm': 'MKV / WebM', mpegts: 'MPEG-TS', flv: 'FLV', hevc: 'H.265 裸流', ivf: 'IVF', obu: 'AV1 OBU' };
+const rows = (pairs) => pairs.filter(Boolean).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+
+let player = null;
+let source = null;
+let scrubbing = false;
+const log = (window.events = []);
+const history = []; // displayed fps, one sample per second
+let lastShown = 0, lastStamp = 0, shownFps = 0;
+
+// ---- environment --------------------------------------------------------------------------
+{
+  const v = document.createElement('video');
+  const can = (type) => (v.canPlayType(type) ? '<span class="ok">支持</span>' : '<span class="no">不支持</span>');
+  $('env').innerHTML = [
+    `跨源隔离（WASM 多线程需要）<b class="${crossOriginIsolated ? 'ok' : 'no'}">${crossOriginIsolated ? '已开启' : '未开启'}</b>`,
+    `逻辑核心 <b>${navigator.hardwareConcurrency ?? '?'}</b>`,
+    `WebGPU <b class="${navigator.gpu ? 'ok' : 'no'}">${navigator.gpu ? '有' : '无'}</b>`,
+    `原生 H.265 ${can('video/mp4; codecs="hvc1.1.6.L120.90"')}`,
+    `原生 AV1 ${can('video/mp4; codecs="av01.0.08M.08"')}`,
+  ].join('');
+  if (!crossOriginIsolated) {
+    $('warn').hidden = false;
+    $('warn').textContent = isSecureContext
+      ? '这个页面没有跨源隔离，WASM 软解用不了（只能走浏览器原生解码）。刷新一次试试；仍然不行就是服务器没发 COOP/COEP 头。'
+      : '这个页面不是安全上下文（要 HTTPS 或 localhost），WASM 软解用不了，只能走浏览器原生解码。';
+  }
+}
+
+for (const id of ['mode', 'renderer', 'threads']) if (params.get(id)) $(id).value = params.get(id);
+if (params.get('muted')) $('muted').checked = true;
+
+// ---- loading ------------------------------------------------------------------------------
+function showParams(i, note = '') {
+  if (!i) {
+    $('params').innerHTML = rows([
+      ['分辨率', player.videoWidth ? `${player.videoWidth} × ${player.videoHeight}` : '-'],
+      ['时长', fmtTime(player.duration || 0)],
+      ['', note || '浏览器原生播放，正在读取详细参数…'],
+    ]);
+    return;
+  }
+  const level = i.videoCodec === 'hevc' && i.level > 0 ? ` @ L${(i.level / 30).toFixed(1)}` : '';
+  const hdr = { pq: 'HDR10（PQ）', hlg: 'HLG', sdr: 'SDR' }[i.transfer];
+  $('params').innerHTML = rows([
+    ['容器', CONTAINERS[i.container] ?? i.container],
+    ['视频编码', `${i.videoCodec.toUpperCase()}${i.profile ? ' · ' + i.profile : ''}${level}`],
+    ['分辨率', `${i.width} × ${i.height}${i.rotation ? `（旋转 ${i.rotation}°）` : ''}${i.sarNum !== i.sarDen ? `，像素比 ${i.sarNum}:${i.sarDen}` : ''}`],
+    ['帧率', i.fps ? i.fps.toFixed(3).replace(/\.?0+$/, '') + ' fps' : '未知'],
+    ['位深 / 格式', `${i.bitDepth} bit · ${i.pixelFormat} · ${hdr}`],
+    ['码率', `${fmtRate(i.bitRate)}${i.videoBitRate ? `（视频 ${fmtRate(i.videoBitRate)}）` : ''}`],
+    ['时长', i.duration ? `${fmtTime(i.duration)}（${i.duration.toFixed(2)} s）` : '未知'],
+    ['音频', i.hasAudio ? `${i.audioCodec.toUpperCase()} · ${i.audioChannels} 声道 · ${i.audioRate} Hz${i.audioBitRate ? ' · ' + fmtRate(i.audioBitRate) : ''}` : '无'],
+  ]);
+}
+
+async function open(src, autoplay = true, at = 0) {
+  player?.destroy();
+  source = src;
+  log.length = history.length = 0;
+  lastShown = lastStamp = shownFps = 0;
+  $('hint').style.display = 'none';
+  $('live').textContent = '';
+  $('stats').innerHTML = rows([['', '加载中…']]);
+  $('params').innerHTML = rows([['', '读取中…']]);
+  player = window.player = new Player($('stage'), {
+    mode: $('mode').value,
+    renderer: $('renderer').value,
+    threads: $('threads').value ? +$('threads').value : undefined,
+  });
+  for (const name of ['loadedmetadata', 'canplay', 'play', 'pause', 'playing', 'waiting', 'seeking', 'seeked', 'ended', 'modechange', 'error', 'resize'])
+    player.addEventListener(name, (e) => {
+      log.push(name + (e.detail ? ': ' + (e.detail.message ?? e.detail) : ''));
+      if (name === 'resize' && player.videoWidth) $('stage').style.aspectRatio = `${player.videoWidth} / ${player.videoHeight}`;
+      if (name === 'modechange') showParams(player.mediaInfo);
+      $('toggle').textContent = player.paused ? '播放' : '暂停';
+    });
+  player.muted = $('muted').checked;
+  player.volume = +$('volume').value;
+  try {
+    await player.load(src);
+  } catch (e) {
+    log.push('load failed: ' + e.message);
+    $('params').innerHTML = rows([['', `<span class="err">打不开：${e.message}</span>`]]);
+    return;
+  }
+  if (player.videoWidth) $('stage').style.aspectRatio = `${player.videoWidth} / ${player.videoHeight}`;
+  showParams(player.mediaInfo);
+  if (!player.mediaInfo) {
+    // native playback: the browser does not tell much, so ask our own demuxer
+    const p = player;
+    Player.probe(src).then((info) => p === player && player.mode === 'native' && showParams(info), (e) => p === player && showParams(null, '详细参数读取失败：' + e.message));
+  }
+  if (at) player.currentTime = at;
+  if (autoplay) player.play().catch((e) => log.push('play failed: ' + e.message));
+}
+
+// ---- controls -----------------------------------------------------------------------------
+$('toggle').onclick = () => (player?.paused ? player.play().catch((e) => log.push('play failed: ' + e.message)) : player?.pause());
+$('open').onclick = () => $('url').value.trim() && open($('url').value.trim());
+$('url').onkeydown = (e) => e.key === 'Enter' && $('open').click();
+$('file').onchange = () => $('file').files[0] && open($('file').files[0]);
+// switching decoder, renderer or thread count reopens the same file at the same position
+for (const id of ['mode', 'renderer', 'threads']) $(id).onchange = () => source && open(source, !player.paused, player.currentTime);
+$('muted').onchange = () => player && (player.muted = $('muted').checked);
+$('volume').oninput = () => player && (player.volume = +$('volume').value);
+$('seek').oninput = () => (scrubbing = true);
+$('seek').onchange = () => {
+  scrubbing = false;
+  if (player?.duration) player.currentTime = ($('seek').value / 1000) * player.duration;
+};
+const stage = $('stage');
+stage.ondragover = (e) => { e.preventDefault(); stage.classList.add('drag'); };
+stage.ondragleave = () => stage.classList.remove('drag');
+stage.ondrop = (e) => { e.preventDefault(); stage.classList.remove('drag'); if (e.dataTransfer.files[0]) open(e.dataTransfer.files[0]); };
+
+// ---- live numbers -------------------------------------------------------------------------
+const RENDERERS = { webgpu: 'WebGPU', webgl2: 'WebGL2', 'page-webgl2': 'WebGL2（页面线程绘制）' };
+const LEVELS = ['不丢帧', '跳过 1/4 非参考帧', '跳过 1/3 非参考帧', '跳过 1/2 非参考帧', '跳过 2/3 非参考帧', '跳过 3/4 非参考帧', '跳过全部非参考帧', '跳过全部非参考帧 + 关闭环路滤波'];
+
+function drawChart() {
+  const c = $('chart'), dpr = devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const target = player?.mediaInfo?.fps || Math.max(30, ...history);
+  const top = Math.max(target, ...history, 1) * 1.15;
+  const y = (v) => h - 2 - (v / top) * (h - 14);
+  g.strokeStyle = '#2a2d32'; g.setLineDash([4, 4]);
+  g.beginPath(); g.moveTo(0, y(target)); g.lineTo(w, y(target)); g.stroke(); g.setLineDash([]);
+  g.fillStyle = '#8b9099'; g.font = '11px system-ui';
+  g.fillText(`显示帧率（最近 ${history.length} 秒），虚线 = ${target.toFixed(0)} fps`, 2, 10);
+  if (history.length < 2) return;
+  g.strokeStyle = '#6ea8fe'; g.lineWidth = 1.5; g.beginPath();
+  const n = 90, step = w / (n - 1), from = Math.max(0, history.length - n);
+  for (let i = from; i < history.length; i++) g[i === from ? 'moveTo' : 'lineTo']((i - from) * step, y(history[i]));
+  g.stroke();
+}
+
+setInterval(() => {
+  $('log').textContent = log.slice(-8).join('\n');
+  if (!player || !player.mode) return;
+  const d = player.duration || 0;
+  if (!scrubbing && d) $('seek').value = (player.currentTime / d) * 1000;
+  $('time').textContent = `${fmtTime(player.currentTime)} / ${fmtTime(d)}`;
+
+  // displayed frame rate from the frame counter, once a second, for either pipeline
+  const now = performance.now(), f = player.frames;
+  if (!lastStamp) { lastStamp = now; lastShown = f.shown; }
+  else if (now - lastStamp >= 1000) {
+    shownFps = ((f.shown - lastShown) * 1000) / (now - lastStamp);
+    lastStamp = now; lastShown = f.shown;
+    if (!player.paused) { history.push(shownFps); if (history.length > 600) history.shift(); }
+    drawChart();
+  }
+
+  const s = player.stats;
+  const mode = player.mode === 'native' ? '浏览器原生解码（有硬解则硬解）' : 'WebAssembly 软解';
+  if (s) {
+    $('stats').innerHTML = rows([
+      ['解码方式', mode],
+      ['渲染 / 线程', `${RENDERERS[s.renderer]} · ${s.threads} 个解码线程 · 屏幕 ${s.refreshHz.toFixed(0)} Hz`],
+      ['解码帧率', `${s.decodeFps.toFixed(1)} fps`],
+      ['显示帧率', `<b>${shownFps.toFixed(1)} fps</b>`],
+      ['已显示 / 丢帧', `${f.shown} 帧 / 解码前跳过 ${s.droppedByDecoder}，迟到丢弃 ${s.droppedByRenderer}，追帧 ${s.resyncs} 次`],
+      ['降级档位', `${s.dropLevel} · ${LEVELS[s.dropLevel]}`],
+      ['帧队列', `${s.frameQueue} / ${s.frameQueueCapacity}`],
+      ['音画同步', `${s.audioClock ? '音频时钟' : '系统时钟'} · 画面落后 ${Math.max(0, (s.clockTime - s.videoTime) * 1000).toFixed(0)} ms · 音频缓冲 ${s.audioBufferedMs.toFixed(0)} ms`],
+      s.renderer !== 'page-webgl2' && ['上屏耗时', `${s.drawMs.toFixed(2)} ms / 帧`],
+    ]);
+    $('live').textContent = `WASM · ${s.renderer.replace('page-', '')} · 解码 ${s.decodeFps.toFixed(0)} fps · 显示 ${shownFps.toFixed(0)} fps · 档位 ${s.dropLevel}`;
+  } else {
+    $('stats').innerHTML = rows([
+      ['解码方式', mode],
+      ['显示帧率', `<b>${shownFps.toFixed(1)} fps</b>`],
+      ['已显示 / 丢帧', `${f.shown} 帧 / ${f.dropped} 帧`],
+    ]);
+    $('live').textContent = `原生 · 显示 ${shownFps.toFixed(0)} fps`;
+  }
+}, 200);
+
+if (params.get('src')) open(params.get('src'), !!params.get('autoplay'));
+</script>
+</body>
+</html>
