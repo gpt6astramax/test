@@ -1,0 +1,49 @@
+{
+ "version": "307a804198e7",
+ "built": "2026-11-15T21:06:14.065Z",
+ "medium": 0,
+ "urgent": 0,
+ "note": "",
+ "files": [
+  {
+   "path": "index.html",
+   "size": 5088,
+   "sha256": "8238bcd3e8728cc985778e668778b2a220b4be7824e66f86d5f7effe2d92e240"
+  },
+  {
+   "path": "assets/index-BYQIZJyP.css",
+   "size": 46161,
+   "sha256": "ed3bb6fbbcab89694a28f54b79c42230490406984a55f31b003ac0c64aea3936"
+  },
+  {
+   "path": "assets/index-DoIZykcK.js",
+   "size": 203877,
+   "sha256": "d02f8dee1837bc98c8c9f5f40b98194f182f1e05451e77190c2bc1c3a2023b40"
+  },
+  {
+   "path": "assets/jost-latin-300-normal-DkBQXsFU.woff2",
+   "size": 9876,
+   "sha256": "4755701d1a52180592b7619acd5f7f7852beb54adb7ee282ea8ad1d1bcfb2ae6"
+  },
+  {
+   "path": "assets/jost-latin-400-normal-q-RKOgPK.woff2",
+   "size": 9404,
+   "sha256": "f94cffda16515fbb1667a2662d6b46f5610a942fd02fe88d67ff98f776288962"
+  },
+  {
+   "path": "assets/jost-latin-600-normal-C497H-z9.woff2",
+   "size": 10480,
+   "sha256": "d0487d684596edca7f495d2495ee77a55448740930023c305e8a683b1daefda2"
+  },
+  {
+   "path": "assets/vendor-BP_Uoy1r.js",
+   "size": 88536,
+   "sha256": "f7b1109d411cac7059fd99b327aac66462df87b575f9d2f930ca9ddf3c9223b1"
+  },
+  {
+   "path": "assets/wordmark-5MDYEXiE.svg",
+   "size": 3994,
+   "sha256": "00309b0d1febb8276f3e6a7d1950f113eebaf7ebf8e2dca6e41008cf8e443658"
+  }
+ ]
+}
