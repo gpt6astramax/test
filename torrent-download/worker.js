@@ -22,7 +22,10 @@ export default {
     if (pathname !== route + '/download') return message('找不到该地址。', 404);
     if (request.method !== 'POST') return message('请使用 POST。', 405, { Allow: 'POST' });
     const requestOrigin = request.headers.get('Origin');
-    if (requestOrigin && requestOrigin !== origin) return message('请从下载页提交。', 403);
+    const sameOriginNavigation = requestOrigin === 'null' && request.headers.get('Sec-Fetch-Site') === 'same-origin';
+    if (requestOrigin && requestOrigin !== origin && !sameOriginNavigation) {
+      return message('请从下载页提交。', 403);
+    }
     if (request.headers.get('Content-Type')?.split(';')[0] !== 'application/x-www-form-urlencoded') {
       return message('请提交 PTTime 下载链接。', 415);
     }
@@ -168,6 +171,7 @@ function downloadPage() {
     headers: {
       ...privateHeaders,
       'Content-Type': 'text/html; charset=utf-8',
+      'Referrer-Policy': 'same-origin',
       'Content-Security-Policy': "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; " +
         "form-action 'self'; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'",
     },
