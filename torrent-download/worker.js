@@ -221,8 +221,8 @@ function pieceWindow(transfer, first, last, deadline) {
   const pending = new Map();
   const limit = Math.max(1, Math.min(32, Math.floor(48 * 1024 * 1024 / transfer.meta.pieceLength)));
   let next = first;
-  function fill() {
-    while (pending.size < limit && next <= last) {
+  function fill(window) {
+    while (pending.size < window && next <= last) {
       const index = next++;
       const timeout = index === first ? deadline : Date.now() + 110000;
       pending.set(index, transfer.piece(index, timeout).then(
@@ -231,7 +231,7 @@ function pieceWindow(transfer, first, last, deadline) {
       ));
     }
   }
-  fill();
+  fill(Math.min(4, limit));
   return async index => {
     const result = await pending.get(index);
     const data = result.error && index !== first
@@ -239,7 +239,7 @@ function pieceWindow(transfer, first, last, deadline) {
       : result.data;
     if (!data) throw result.error;
     pending.delete(index);
-    fill();
+    fill(limit);
     return data;
   };
 }

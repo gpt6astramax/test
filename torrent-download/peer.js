@@ -1,10 +1,16 @@
-import { announce, publicIp, readBytes } from './torrent.js';
+import { announce, decode, publicIp, readBytes } from './torrent.js';
 
 const protocol = new TextEncoder().encode('BitTorrent protocol');
 const blockLength = 16 * 1024;
-const batchLength = 48;
-const openingLimit = 5;
-const connectionLimit = 32;
+const socketLimit = 5;
+const extensionHandshake = new TextEncoder().encode('d1:mde4:reqqi1ee');
+
+class PeerError extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
+}
 
 export class TorrentTransfer {
   constructor(meta, connect, client, cache, udp) {
@@ -19,7 +25,11 @@ export class TorrentTransfer {
     this.inUse = new Set();
     this.cooldowns = new Map();
     this.waiters = new Set();
-    this.stats = { tcp: 0, handshakes: 0, ready: 0 };
+    this.stats = {
+      tcp: 0, handshakes: 0, ready: 0, blocks: 0, dialErrors: 0, handshakeErrors: 0,
+      timeouts: 0, chokes: 0, rejected: 0, invalid: 0, corrupt: 0, ended: 0,
+      limited: 0, refused: 0,
+    };
     this.downloaded = 0;
     this.reported = 0;
     this.announced = 0;
@@ -166,25 +176,31 @@ export class TorrentTransfer {
       await this.refresh().catch(() => {});
     }
     const tried = new Set();
+    const length = Math.min(this.meta.pieceLength, this.meta.size - index * this.meta.pieceLength);
+    let assembly;
     while (!this.closed && Date.now() < deadline) {
       const peer = await this.acquire(index, tried, deadline);
       if (!peer) break;
       tried.add(peer.key);
       try {
         await withTimeout(peer.waitForPiece(index), Math.max(1, Math.min(8500, deadline - Date.now())));
-        const remaining = Math.max(1, deadline - Date.now());
-        const pieceTime = Math.max(12000, Math.min(90000, this.meta.pieceLength / 200));
-        const data = await withTimeout(peer.readPiece(index), Math.min(pieceTime, remaining));
-        const hash = new Uint8Array(await crypto.subtle.digest('SHA-1', data));
+        assembly ??= new PieceAssembly(length);
+        await peer.readPiece(index, assembly, deadline);
+        const hash = new Uint8Array(await crypto.subtle.digest('SHA-1', assembly.data));
         const expected = this.meta.hashes.subarray(index * 20, index * 20 + 20);
-        if (!equal(hash, expected)) throw new Error('BT piece hash mismatch');
-        this.downloaded += data.length;
-        return data;
-      } catch {
-        if (peer.canServe(index)) {
-          this.connections.delete(peer.key);
+        if (!equal(hash, expected)) {
+          assembly = null;
+          throw new PeerError('corrupt');
+        }
+        this.downloaded += assembly.data.length;
+        return assembly.data;
+      } catch (error) {
+        const cause = peerCause(error);
+        if (cause !== 'missing') {
+          this.stats[cause]++;
           this.cooldowns.set(peer.key, Date.now() + 15000);
-          peer.close();
+          await peer.close();
+          this.connections.delete(peer.key);
         }
       } finally {
         this.inUse.delete(peer);
@@ -193,24 +209,18 @@ export class TorrentTransfer {
     }
     throw new Error('本次未取到校验通过的 BT 分片（tracker 节点 ' +
       this.peers.length + '，TCP 连通 ' + this.stats.tcp + '，握手成功 ' +
-      this.stats.handshakes + '，可请求 ' + this.stats.ready + '）。');
+      this.stats.handshakes + '，可请求 ' + this.stats.ready +
+      '，收到块 ' + this.stats.blocks + '，TCP 失败 ' + this.stats.dialErrors +
+      '，握手失败 ' + this.stats.handshakeErrors + '，连接限额 ' + this.stats.limited +
+      '，拒绝连接 ' + this.stats.refused + '，超时 ' + this.stats.timeouts +
+      '，被暂停或拒绝块 ' + (this.stats.chokes + this.stats.rejected) +
+      '，断开 ' + this.stats.ended + '，无效帧 ' + this.stats.invalid +
+      '，SHA-1 不符 ' + this.stats.corrupt + '）。');
   }
 
   async acquire(index, tried, deadline) {
     while (!this.closed && Date.now() < deadline) {
       const now = Date.now();
-      if (this.udp && !this.meta.private && !this.meta.pttime && !this.extraLookup &&
-          this.tracker !== 'dht' && this.stats.ready < 2 && now - this.startedAt >= 8000) {
-        this.searchingDht = true;
-        this.extraLookup = this.udpLookup('dht', {}, deadline).then(reply => {
-          const addresses = new Map(this.peers.map(peer => [addressKey(peer), peer]));
-          for (const peer of reply.peers) addresses.set(addressKey(peer), peer);
-          this.peers = [...addresses.values()];
-        }).catch(() => {}).finally(() => {
-          this.searchingDht = false;
-          this.notify();
-        });
-      }
       const idle = [...this.connections.values()].find(
         peer => !this.inUse.has(peer) && !tried.has(peer.key) && peer.canServe(index),
       );
@@ -224,12 +234,16 @@ export class TorrentTransfer {
         return !tried.has(key) && !this.connections.has(key) && !this.dials.has(key) &&
           (this.cooldowns.get(key) ?? 0) <= now;
       });
-      if (candidate && this.dials.size < openingLimit) {
-        if (this.connections.size + this.dials.size >= connectionLimit) {
+      if (!this.downloaded && (!candidate || now - this.startedAt >= 8000)) this.searchDht(deadline);
+      if (candidate && this.dials.size < socketLimit) {
+        if (this.connections.size + this.dials.size >= socketLimit) {
           const unsuitable = [...this.connections.values()].find(peer => !this.inUse.has(peer));
           if (unsuitable) {
+            this.inUse.add(unsuitable);
+            await unsuitable.close();
             this.connections.delete(unsuitable.key);
-            unsuitable.close();
+            this.inUse.delete(unsuitable);
+            this.notify();
             continue;
           }
         } else {
@@ -249,6 +263,20 @@ export class TorrentTransfer {
     return null;
   }
 
+  searchDht(deadline) {
+    if (!this.udp || this.meta.private || this.meta.pttime || this.extraLookup ||
+        this.tracker === 'dht') return;
+    this.searchingDht = true;
+    this.extraLookup = this.udpLookup('dht', {}, deadline).then(reply => {
+      const addresses = new Map(this.peers.map(peer => [addressKey(peer), peer]));
+      for (const peer of reply.peers) addresses.set(addressKey(peer), peer);
+      this.peers = [...addresses.values()];
+    }).catch(() => {}).finally(() => {
+      this.searchingDht = false;
+      this.notify();
+    });
+  }
+
   async dial(address, deadline) {
     const key = addressKey(address);
     let peer;
@@ -260,9 +288,12 @@ export class TorrentTransfer {
       this.connections.set(key, peer);
       this.inUse.add(peer);
       return peer;
-    } catch {
+    } catch (error) {
+      if (peer?.tcpOpen) this.stats.handshakeErrors++;
+      else this.stats.dialErrors++;
+      this.stats[peerCause(error)]++;
       this.cooldowns.set(key, Date.now() + 30000);
-      peer?.close();
+      await peer?.close();
       return null;
     } finally {
       this.dials.delete(key);
@@ -314,6 +345,14 @@ function addressKey(address) {
   return address.hostname + '/' + address.port;
 }
 
+class PieceAssembly {
+  constructor(length) {
+    this.data = new Uint8Array(length);
+    this.remaining = Math.ceil(length / blockLength);
+    this.received = new Uint8Array(this.remaining);
+  }
+}
+
 class Peer {
   constructor(address, meta, peerId, connect, stats) {
     this.key = addressKey(address);
@@ -331,69 +370,95 @@ class Peer {
 
   async open() {
     await this.socket.opened;
+    this.tcpOpen = true;
     this.stats.tcp++;
     const handshake = new Uint8Array(68);
     handshake[0] = protocol.length;
     handshake.set(protocol, 1);
+    handshake[25] = 0x10;
     handshake.set(this.meta.infoHash, 28);
     handshake.set(this.peerId, 48);
     await this.writer.write(handshake);
     const reply = await this.take(68);
     if (reply[0] !== protocol.length || !equal(reply.subarray(1, 20), protocol) ||
         !equal(reply.subarray(28, 48), this.meta.infoHash) ||
-        equal(reply.subarray(48), this.peerId)) throw new Error('Invalid BT handshake');
+        equal(reply.subarray(48), this.peerId)) throw new PeerError('invalid');
     this.stats.handshakes++;
+    if (reply[25] & 0x10) {
+      const message = new Uint8Array(6 + extensionHandshake.length);
+      new DataView(message.buffer).setUint32(0, 2 + extensionHandshake.length);
+      message[4] = 20;
+      message.set(extensionHandshake, 6);
+      await this.writer.write(message);
+    }
     await this.writer.write(Uint8Array.of(0, 0, 0, 1, 2));
   }
 
-  async readPiece(index) {
-    const length = Math.min(this.meta.pieceLength, this.meta.size - index * this.meta.pieceLength);
-    const data = new Uint8Array(length);
-    for (let batch = 0; batch < length; batch += blockLength * batchLength) {
-      const end = Math.min(length, batch + blockLength * batchLength);
-      const count = Math.ceil((end - batch) / blockLength);
-      const requests = new Uint8Array(17 * count);
-      const view = new DataView(requests.buffer);
-      const received = new Uint8Array(count);
-      for (let slot = 0; slot < count; slot++) {
-        const offset = slot * 17;
-        const begin = batch + slot * blockLength;
-        view.setUint32(offset, 13);
-        requests[offset + 4] = 6;
-        view.setUint32(offset + 5, index);
-        view.setUint32(offset + 9, begin);
-        view.setUint32(offset + 13, Math.min(blockLength, length - begin));
-      }
-      await this.writer.write(requests);
-      let remaining = count;
-      while (remaining > 0) {
-        const message = await this.message();
-        if (message[0] !== 7) {
-          this.note(message);
-          if (this.choked || message[0] === 16) throw new Error('Peer declined BT requests');
-          continue;
+  async readPiece(index, assembly, deadline) {
+    let next = 0;
+    const outstanding = new Set();
+    let idleUntil = Math.min(deadline, Date.now() + 12000);
+    const remainingTime = () => {
+      const remaining = idleUntil - Date.now();
+      if (remaining <= 0) throw new PeerError('timeouts');
+      return remaining;
+    };
+
+    while (assembly.remaining) {
+      const limit = Math.min(16, this.maxRequests ?? 8);
+      if (outstanding.size <= Math.floor(limit / 2)) {
+        const batch = [];
+        while (next < assembly.received.length && outstanding.size < limit) {
+          const slot = next++;
+          if (!assembly.received[slot]) {
+            outstanding.add(slot);
+            batch.push(slot);
+          }
         }
-        if (message.length < 9) throw new Error('Invalid BT piece frame');
-        const header = new DataView(message.buffer, message.byteOffset, message.byteLength);
-        const begin = header.getUint32(5);
-        const slot = (begin - batch) / blockLength;
-        if (header.getUint32(1) !== index || !Number.isInteger(slot) ||
-            slot < 0 || slot >= count || received[slot]) continue;
-        if (message.length !== 9 + Math.min(blockLength, length - begin)) {
-          throw new Error('Unexpected BT block length');
+        if (batch.length) {
+          const requests = new Uint8Array(17 * batch.length);
+          const view = new DataView(requests.buffer);
+          for (const [i, slot] of batch.entries()) {
+            const offset = i * 17;
+            const begin = slot * blockLength;
+            view.setUint32(offset, 13);
+            requests[offset + 4] = 6;
+            view.setUint32(offset + 5, index);
+            view.setUint32(offset + 9, begin);
+            view.setUint32(offset + 13, Math.min(blockLength, assembly.data.length - begin));
+          }
+          await withTimeout(this.writer.write(requests), remainingTime());
         }
-        data.set(message.subarray(9), begin);
-        received[slot] = 1;
-        remaining--;
       }
+
+      const message = await withTimeout(this.message(), remainingTime());
+      if (message[0] !== 7) {
+        this.note(message);
+        if (this.choked) throw new PeerError('chokes');
+        if (message[0] === 16) throw new PeerError('rejected');
+        continue;
+      }
+      if (message.length < 9) throw new PeerError('invalid');
+      const header = new DataView(message.buffer, message.byteOffset, message.byteLength);
+      const begin = header.getUint32(5);
+      const slot = begin / blockLength;
+      if (header.getUint32(1) !== index || !outstanding.has(slot)) continue;
+      if (message.length !== 9 + Math.min(blockLength, assembly.data.length - begin)) {
+        throw new PeerError('invalid');
+      }
+      outstanding.delete(slot);
+      assembly.data.set(message.subarray(9), begin);
+      assembly.received[slot] = 1;
+      assembly.remaining--;
+      this.stats.blocks++;
+      idleUntil = Math.min(deadline, Date.now() + 12000);
     }
-    return data;
   }
 
   async waitForPiece(index) {
     while (true) {
       if (!this.canServe(index)) {
-        throw new Error('Peer has not downloaded this piece');
+        throw new PeerError('missing');
       }
       if (!this.choked) {
         if (!this.ready) this.stats.ready++;
@@ -434,6 +499,16 @@ class Peer {
       case 15:
         this.available = new Uint8Array(bitfieldSize);
         break;
+      case 20:
+        if (message[1] === 0) {
+          try {
+            const requests = decode(message.subarray(2)).decoded?.reqq;
+            if (Number.isInteger(requests) && requests > 0) this.maxRequests = requests;
+          } catch {
+            // The standard peer handshake is sufficient to exchange pieces.
+          }
+        }
+        break;
     }
   }
 
@@ -441,7 +516,7 @@ class Peer {
     const header = await this.take(4);
     const length = new DataView(header.buffer, header.byteOffset, 4).getUint32(0);
     if (length > Math.max(64 * 1024, Math.ceil(this.meta.pieceCount / 8) + 1)) {
-      throw new Error('BT message too large');
+      throw new PeerError('invalid');
     }
     return this.take(length);
   }
@@ -467,20 +542,29 @@ class Peer {
 
   async readChunk() {
     const { value, done } = await this.reader.read();
-    if (done) throw new Error('BT socket closed');
+    if (done) throw new PeerError('ended');
     this.chunk = value;
     this.offset = 0;
   }
 
   close() {
-    this.socket.close().catch(() => {});
+    return this.socket.close().catch(() => {});
   }
+}
+
+function peerCause(error) {
+  if (error instanceof PeerError) return error.code;
+  const reason = String(error?.message ?? '');
+  if (/connection limit|too many connections/i.test(reason)) return 'limited';
+  if (/refused|cannot connect|prohibited|disallowed/i.test(reason)) return 'refused';
+  if (/timeout|timed out/i.test(reason)) return 'timeouts';
+  return 'ended';
 }
 
 function withTimeout(promise, ms) {
   let timer;
   const timeout = new Promise((resolve, reject) => {
-    timer = setTimeout(() => reject(new Error('BT peer timed out')), ms);
+    timer = setTimeout(() => reject(new PeerError('timeouts')), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
