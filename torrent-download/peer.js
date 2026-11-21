@@ -229,27 +229,25 @@ export class TorrentTransfer {
         return idle;
       }
 
-      const candidate = this.peers.find(address => {
+      const candidates = this.peers.filter(address => {
         const key = addressKey(address);
         return !tried.has(key) && !this.connections.has(key) && !this.dials.has(key) &&
           (this.cooldowns.get(key) ?? 0) <= now;
       });
-      if (!this.downloaded && (!candidate || now - this.startedAt >= 8000)) this.searchDht(deadline);
-      if (candidate && this.dials.size < socketLimit) {
-        if (this.connections.size + this.dials.size >= socketLimit) {
-          const unsuitable = [...this.connections.values()].find(peer => !this.inUse.has(peer));
-          if (unsuitable) {
-            this.inUse.add(unsuitable);
-            await unsuitable.close();
-            this.connections.delete(unsuitable.key);
-            this.inUse.delete(unsuitable);
-            this.notify();
-            continue;
-          }
-        } else {
-          const peer = await this.dial(candidate, deadline);
-          if (peer) return peer;
-          tried.add(addressKey(candidate));
+      if (!this.downloaded && (!candidates.length || now - this.startedAt >= 8000)) this.searchDht(deadline);
+
+      const freeSlots = socketLimit - this.connections.size - this.dials.size;
+      if (candidates.length && freeSlots > 0) {
+        for (const address of candidates.slice(0, freeSlots)) void this.dial(address, deadline);
+        if (!this.dials.size) continue;
+      } else if (candidates.length && !this.dials.size) {
+        const unsuitable = [...this.connections.values()].find(peer => !this.inUse.has(peer));
+        if (unsuitable) {
+          this.inUse.add(unsuitable);
+          await unsuitable.close();
+          this.connections.delete(unsuitable.key);
+          this.inUse.delete(unsuitable);
+          this.notify();
           continue;
         }
       }
@@ -283,18 +281,15 @@ export class TorrentTransfer {
     try {
       peer = new Peer(address, this.meta, this.client.peerId, this.connect, this.stats);
       this.dials.set(key, peer);
-      await withTimeout(peer.open(), Math.max(1, Math.min(10000, deadline - Date.now())));
+      await peer.open(deadline);
       if (this.closed) throw new Error('BT 传输已关闭。');
       this.connections.set(key, peer);
-      this.inUse.add(peer);
-      return peer;
     } catch (error) {
       if (peer?.tcpOpen) this.stats.handshakeErrors++;
       else this.stats.dialErrors++;
       this.stats[peerCause(error)]++;
       this.cooldowns.set(key, Date.now() + 30000);
       await peer?.close();
-      return null;
     } finally {
       this.dials.delete(key);
       this.notify();
@@ -368,10 +363,16 @@ class Peer {
     this.offset = 0;
   }
 
-  async open() {
-    await this.socket.opened;
+  async open(deadline) {
+    const tcpTime = Math.max(1, Math.min(4200, deadline - Date.now()));
+    await withTimeout(this.socket.opened, tcpTime);
     this.tcpOpen = true;
     this.stats.tcp++;
+    const handshakeTime = Math.max(1, Math.min(4800, deadline - Date.now()));
+    await withTimeout(this.handshake(), handshakeTime);
+  }
+
+  async handshake() {
     const handshake = new Uint8Array(68);
     handshake[0] = protocol.length;
     handshake.set(protocol, 1);
@@ -547,8 +548,10 @@ class Peer {
     this.offset = 0;
   }
 
-  close() {
-    return this.socket.close().catch(() => {});
+  async close() {
+    try {
+      await this.socket.close();
+    } catch {}
   }
 }
 
