@@ -1,43 +1,96 @@
-import { announce, clientIdentity } from './torrent.js';
+import { announce } from './torrent.js';
 
 const protocol = new TextEncoder().encode('BitTorrent protocol');
 const blockLength = 16 * 1024;
 const batchLength = 48;
 
 export class TorrentTransfer {
-  constructor(meta, connect) {
+  constructor(meta, connect, client, cache) {
     this.meta = meta;
     this.connect = connect;
-    this.client = clientIdentity();
+    this.client = client;
+    this.cache = cache;
     this.peers = [];
     this.dials = new Set();
     this.stats = { tcp: 0, handshakes: 0, ready: 0 };
     this.downloaded = 0;
+    this.reported = 0;
+    this.announced = 0;
     this.nextAnnounce = 0;
   }
 
   async start() {
-    await this.announce('started');
+    await this.refresh();
     this.started = true;
     if (!this.peers.length) throw new Error('PTTime tracker 暂无可用的节点。');
   }
 
-  async announce(event) {
-    const { peers, interval } = await announce(this.meta, this.client, event, this.downloaded);
-    this.nextAnnounce = Date.now() + interval * 1000;
-    if (peers.length) this.peers = peers;
+  async cachedSession() {
+    try {
+      return await (await this.cache?.match(this.client.cacheKey))?.json();
+    } catch {
+      return undefined;
+    }
+  }
+
+  useSession(session) {
+    this.peers = session.peers;
+    this.nextAnnounce = session.nextAnnounce;
+    this.announced = Math.max(this.announced, session.downloaded);
+  }
+
+  async refresh() {
+    const current = await this.cachedSession();
+    if (current?.peers.length && current.nextAnnounce > Date.now()) {
+      this.useSession(current);
+      return;
+    }
+    try {
+      await this.updateTracker(current, current || this.started ? undefined : 'started');
+    } catch (error) {
+      const fallback = await this.cachedSession();
+      if (!fallback?.peers.length) throw error;
+      this.useSession(fallback);
+      this.nextAnnounce = Math.max(this.nextAnnounce, Date.now() + 60000);
+    }
+  }
+
+  async updateTracker(previous, event) {
+    const downloaded = Math.max(previous?.downloaded ?? 0, this.announced) +
+      this.downloaded - this.reported;
+    const left = Math.min(previous?.left ?? this.meta.size, this.meta.size - this.downloaded);
+    const reply = await announce(this.meta, this.client, event, downloaded, left);
+    const session = {
+      peers: reply.peers.length ? reply.peers : this.peers,
+      nextAnnounce: Date.now() + reply.interval * 1000,
+      downloaded,
+      left,
+    };
+    this.reported = this.downloaded;
+    this.useSession(session);
+    try {
+      await this.cache?.put(this.client.cacheKey, Response.json(session, {
+        headers: { 'Cache-Control': 'max-age=600' },
+      }));
+    } catch {
+      // This request can still use the peers the tracker returned.
+    }
   }
 
   async piece(index) {
     if (this.closed) throw new Error('BT 传输已关闭。');
     if (Date.now() >= this.nextAnnounce) {
       this.nextAnnounce = Date.now() + 60000;
-      await this.announce().catch(() => {});
+      await this.refresh().catch(() => {});
     }
     const tried = new Set();
     while (!this.closed) {
       if (!this.peer) this.peer = await this.findPeer(index, tried);
       if (!this.peer) break;
+      if (this.closed) {
+        this.peer.close();
+        break;
+      }
       tried.add(this.peer.address);
       try {
         const data = await withTimeout(this.peer.readPiece(index), 90000);
@@ -91,11 +144,12 @@ export class TorrentTransfer {
     this.closed = true;
     this.peer?.close();
     for (const peer of this.dials) peer.close();
-    if (this.started) {
-      if (completed && this.downloaded === this.meta.size) {
-        await this.announce('completed').catch(() => {});
-      }
-      await this.announce('stopped').catch(() => {});
+    // Range readers share a logical client. Closing one must not stop the others.
+    if (this.started && completed && this.downloaded === this.meta.size) {
+      const previous = await this.cachedSession();
+      await this.updateTracker(previous, 'completed').catch(() => {});
+      await announce(this.meta, this.client, 'stopped', this.announced, 0).catch(() => {});
+      await this.cache?.delete(this.client.cacheKey).catch(() => {});
     }
   }
 }

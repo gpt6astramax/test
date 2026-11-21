@@ -1,5 +1,5 @@
 import { connect } from 'cloudflare:sockets';
-import { loadTorrent, readBytes } from './torrent.js';
+import { clientIdentity, loadTorrent, readBytes } from './torrent.js';
 import { TorrentTransfer } from './peer.js';
 
 const route = '/torrent-download';
@@ -26,12 +26,12 @@ export default {
       return openDownload(request, origin);
     }
 
-    const id = /^\/torrent-download\/file\/(\d{1,20})$/.exec(pathname)?.[1];
-    if (!id) return message('找不到该地址。', 404);
+    const file = /^\/torrent-download\/file\/(\d{1,20})(\/ready)?$/.exec(pathname);
+    if (!file) return message('找不到该地址。', 404);
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return message('请使用 GET 或 HEAD。', 405, { Allow: 'GET, HEAD' });
     }
-    return downloadFile(request, ctx, id);
+    return downloadFile(request, ctx, origin, file[1], Boolean(file[2]));
   },
 };
 
@@ -58,14 +58,14 @@ async function openDownload(request, origin) {
     status: 303,
     headers: {
       ...privateHeaders,
-      Location: filePath,
+      Location: filePath + '/ready',
       'Set-Cookie': cookieName + '=' + id + '.' + uid + '.' + passkey +
         '; Path=' + filePath + '; Max-Age=86400; HttpOnly; Secure; SameSite=Lax',
     },
   });
 }
 
-async function downloadFile(request, ctx, id) {
+async function downloadFile(request, ctx, origin, id, ready) {
   const stored = request.headers.get('Cookie')?.match(
     /(?:^|;\s*)pttime_source=(\d{1,20})\.(\d{1,20})\.([a-f0-9]{32})(?=;|$)/i,
   );
@@ -77,6 +77,8 @@ async function downloadFile(request, ctx, id) {
   let transfer;
   try {
     const meta = await loadTorrent(source);
+    if (ready) return readyPage(meta, route + '/file/' + id);
+
     const range = byteRange(request.headers.get('Range'), meta.size);
     if (!range) {
       return message('请求的区间超出文件范围。', 416, { 'Content-Range': 'bytes */' + meta.size });
@@ -94,20 +96,19 @@ async function downloadFile(request, ctx, id) {
     if (range.partial) headers['Content-Range'] = 'bytes ' + range.start + '-' + range.end + '/' + meta.size;
     if (request.method === 'HEAD') return new Response(null, { status, headers });
 
-    transfer = new TorrentTransfer(meta, connect);
+    const client = await clientIdentity(meta, origin);
+    transfer = new TorrentTransfer(meta, connect, client, caches.default);
     await transfer.start();
     let position = range.start;
-    let piece = await transfer.piece(Math.floor(position / meta.pieceLength));
 
     const body = new ReadableStream({
       async pull(controller) {
         try {
           const index = Math.floor(position / meta.pieceLength);
-          piece ??= await transfer.piece(index);
+          const piece = await transfer.piece(index);
           const offset = position - index * meta.pieceLength;
           const length = Math.min(piece.length - offset, range.end - position + 1);
           controller.enqueue(piece.subarray(offset, offset + length));
-          piece = null;
           position += length;
           if (position > range.end) {
             controller.close();
@@ -174,6 +175,53 @@ function message(text, status, headers) {
   });
 }
 
+function readyPage(meta, filePath) {
+  const nonce = crypto.randomUUID();
+  const filename = meta.filename.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const size = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(meta.size / 1e9);
+  const html = `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>下载原文件</title>
+<style>
+  :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
+  body { margin: 0; }
+  main { max-width: 36rem; margin: 12vh auto 0; padding: 0 1.25rem; }
+  h1 { font-size: 1.65rem; }
+  .file { overflow-wrap: anywhere; }
+  a { display: inline-block; background: #1059d2; color: white; text-decoration: none; padding: .8rem 1.2rem; border-radius: .65rem; }
+  output { display: block; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>下载原文件</h1>
+  <p class="file">FILE_NAME</p>
+  <p>FILE_SIZE GB</p>
+  <p><a id="download" href="FILE_PATH" download>下载文件</a></p>
+  <p><output id="status" role="status"></output></p>
+</main>
+<script nonce="NONCE">
+  document.getElementById('download').addEventListener('click', () => {
+    document.getElementById('status').textContent = '已发起下载。连接 BT 节点通常需要一些时间，可在浏览器下载列表里查看进度。';
+  });
+</script>
+</body>
+</html>`;
+  return new Response(html.replace(/FILE_NAME|FILE_SIZE|FILE_PATH|NONCE/g, token => ({
+    FILE_NAME: filename, FILE_SIZE: size, FILE_PATH: filePath, NONCE: nonce,
+  })[token]), {
+    headers: {
+      ...privateHeaders,
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; " +
+        "style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'",
+    },
+  });
+}
+
 function downloadPage() {
   const nonce = crypto.randomUUID();
   const html = `<!doctype html>
@@ -196,7 +244,7 @@ function downloadPage() {
   <form action="/torrent-download/download" method="post" autocomplete="off">
     <label for="url">PTTime 下载链接</label>
     <input id="url" name="url" type="url" required maxlength="2048" spellcheck="false">
-    <button type="submit">下载原文件</button>
+    <button type="submit">打开下载页</button>
   </form>
 </main>
 <script nonce="NONCE">

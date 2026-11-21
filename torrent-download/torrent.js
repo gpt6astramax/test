@@ -123,20 +123,22 @@ export async function loadTorrent(source) {
   };
 }
 
-export function clientIdentity() {
-  const suffix = hex(crypto.getRandomValues(new Uint8Array(6)));
+export async function clientIdentity(meta, origin) {
+  const input = bytes.encode('pttime-worker:' + meta.tracker + '#' + hex(meta.infoHash));
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
   return {
-    peerId: bytes.encode('-TR4060-' + suffix),
-    trackerKey: hex(crypto.getRandomValues(new Uint8Array(4))),
+    peerId: bytes.encode('-TR4060-' + hex(digest.subarray(0, 6))),
+    trackerKey: hex(digest.subarray(6, 10)),
+    cacheKey: new Request(origin + '/torrent-download/.tracker/' + hex(digest)),
   };
 }
 
-export async function announce(meta, client, event, downloaded) {
+export async function announce(meta, client, event, downloaded, left) {
   const params = new URLSearchParams({
     port: '51413',
     uploaded: '0',
     downloaded: String(downloaded),
-    left: String(Math.max(0, meta.size - downloaded)),
+    left: String(left),
     compact: '1',
     numwant: event === 'stopped' ? '0' : '40',
     key: client.trackerKey,
