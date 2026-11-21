@@ -31,7 +31,7 @@ export async function readBytes(body, max) {
   return result;
 }
 
-function decode(data) {
+export function decode(data) {
   let offset = 0;
   let encodedInfo;
   const bad = () => { throw new Error('无效的 BT 元数据。'); };
@@ -156,19 +156,22 @@ export async function loadTorrent(raw) {
 
   const addresses = Array.isArray(decoded['announce-list']) ? decoded['announce-list'].flat() : [];
   const trackers = [];
+  const udpTrackers = [];
   for (const address of [decoded.announce, ...addresses]) {
     if (!(address instanceof Uint8Array)) continue;
     const value = text.decode(address);
+    if (value.startsWith('udp://') && value.length <= 512 && !udpTrackers.includes(value) &&
+        udpTrackers.length < 4) udpTrackers.push(value);
     const tracker = /^udp:\/\/tracker\.opentrackr\.org:1337(?:\/announce)?\/?$/.test(value)
       ? openTrackr
       : httpUrl(value, true)?.href;
     if (tracker && !trackers.includes(tracker)) trackers.push(tracker);
-    if (trackers.length === 4) break;
+    if (trackers.length >= 4) trackers.length = 4;
   }
   if (!trackers.length && info.private !== 1) trackers.push(openTrackr);
   const pttime = trackers.length > 0 && isPttimeTracker(trackers[0]);
   return {
-    label, files, size, trackers, pttime, private: info.private === 1,
+    label, files, size, trackers, udpTrackers, pttime, private: info.private === 1,
     pieceLength,
     pieceCount: info.pieces.length / 20,
     hashes: info.pieces,
@@ -286,7 +289,7 @@ function addPeer(peers, hostname, port) {
   peers.set(hostname + '/' + port, { hostname, port });
 }
 
-function publicIp(hostname) {
+export function publicIp(hostname) {
   if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) {
     const [a, b, c, d] = hostname.split('.').map(Number);
     return !(a === 0 || a === 10 || a === 127 || a >= 224 || b > 255 || c > 255 || d > 255 ||

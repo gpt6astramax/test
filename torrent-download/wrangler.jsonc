@@ -1,0 +1,19 @@
+{
+  "name": "bt-download",
+  "main": "container-worker.js",
+  "compatibility_date": "2026-11-21",
+  "workers_dev": true,
+  "preview_urls": false,
+  "containers": [
+    {
+      "class_name": "UdpDiscovery",
+      "image": "./Dockerfile",
+      "instance_type": "lite",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "UDP_DISCOVERY", "class_name": "UdpDiscovery" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["UdpDiscovery"] }]
+}

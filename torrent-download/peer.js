@@ -1,4 +1,4 @@
-import { announce } from './torrent.js';
+import { announce, publicIp, readBytes } from './torrent.js';
 
 const protocol = new TextEncoder().encode('BitTorrent protocol');
 const blockLength = 16 * 1024;
@@ -7,11 +7,12 @@ const openingLimit = 5;
 const connectionLimit = 32;
 
 export class TorrentTransfer {
-  constructor(meta, connect, client, cache) {
+  constructor(meta, connect, client, cache, udp) {
     this.meta = meta;
     this.connect = connect;
     this.client = client;
     this.cache = cache;
+    this.udp = udp;
     this.peers = [];
     this.connections = new Map();
     this.dials = new Map();
@@ -26,7 +27,8 @@ export class TorrentTransfer {
   }
 
   async start(deadline) {
-    await this.refresh();
+    this.startedAt = Date.now();
+    await this.refresh(deadline);
     this.started = true;
     if (!this.peers.length) throw new Error('Tracker 暂无可用的 TCP 节点。');
     if (Date.now() >= deadline) throw new Error('等待 Tracker 返回节点超时。');
@@ -47,14 +49,14 @@ export class TorrentTransfer {
     this.announced = Math.max(this.announced, session.downloaded);
   }
 
-  async refresh() {
+  async refresh(deadline) {
     const current = await this.cachedSession();
     if (current?.peers.length && current.nextAnnounce > Date.now()) {
       this.useSession(current);
       return;
     }
     try {
-      await this.updateTracker(current, current || this.started ? undefined : 'started');
+      await this.updateTracker(current, current || this.started ? undefined : 'started', deadline);
     } catch (error) {
       const fallback = await this.cachedSession();
       if (!fallback?.peers.length) throw error;
@@ -63,11 +65,11 @@ export class TorrentTransfer {
     }
   }
 
-  async updateTracker(previous, event) {
+  async updateTracker(previous, event, deadline = Date.now() + 40000) {
     const { downloaded, left } = this.progress(previous);
     const tracker = this.tracker ?? previous?.tracker;
-    const reply = await announce(this.meta, this.client, event, downloaded, left, tracker);
-    this.announcedHere = true;
+    const reply = await this.lookup(tracker, event, downloaded, left, deadline);
+    this.announcedHere ||= Boolean(reply.tracker && reply.tracker !== 'dht');
     const session = {
       peers: reply.peers.length ? reply.peers : this.peers,
       tracker: reply.tracker,
@@ -84,6 +86,69 @@ export class TorrentTransfer {
     } catch {
       // This request can still use the peers the tracker returned.
     }
+  }
+
+  async lookup(tracker, event, downloaded, left, deadline) {
+    if (tracker === 'dht') return this.udpLookup('dht', {}, deadline);
+    const udpAnnounce = target => this.udpLookup(
+      'tracker', { tracker: target, event, downloaded, left }, deadline,
+    );
+    if (tracker?.startsWith('udp:')) return udpAnnounce(tracker);
+    let response;
+    let failure;
+    try {
+      response = await announce(this.meta, this.client, event, downloaded, left, tracker);
+      if (response.peers.length || tracker || !this.udp) return response;
+    } catch (error) {
+      failure = error;
+      if (tracker || !this.udp || this.meta.pttime) throw error;
+    }
+    const udpTrackers = [...this.meta.udpTrackers].sort((a, b) =>
+      Number(b.startsWith('udp://tracker.opentrackr.org:')) -
+      Number(a.startsWith('udp://tracker.opentrackr.org:')));
+    for (const target of udpTrackers.slice(0, 2)) {
+      try {
+        const reply = await udpAnnounce(target);
+        if (reply.peers.length) return reply;
+        response ??= reply;
+      } catch (error) {
+        failure ??= error;
+      }
+    }
+    if (!this.meta.private && Date.now() < deadline) {
+      try {
+        return await this.udpLookup('dht', {}, deadline);
+      } catch (error) {
+        failure ??= error;
+      }
+    }
+    if (response) return response;
+    throw failure ?? new Error('Tracker 暂无可用的 TCP 节点。');
+  }
+
+  async udpLookup(method, options, deadline) {
+    if (!this.udp || Date.now() >= deadline) throw new Error('UDP 节点查询超时。');
+    const hex = value => Array.from(value, byte => byte.toString(16).padStart(2, '0')).join('');
+    const response = await this.udp.fetch('http://udp/' + method, {
+      method: 'POST',
+      signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        infoHash: hex(this.meta.infoHash),
+        peerId: hex(this.client.peerId),
+        key: this.client.trackerKey,
+        ...options,
+      }),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error('UDP 节点查询失败（HTTP ' + response.status + '）。');
+    }
+    const json = JSON.parse(new TextDecoder().decode(await readBytes(response.body, 8192)));
+    const peers = json.peers.filter(peer =>
+      publicIp(peer.hostname) && Number.isInteger(peer.port) && peer.port > 0 &&
+      peer.port <= 65535 && peer.port !== 25).slice(0, 40);
+    return { tracker: options.tracker ?? 'dht', peers, interval: json.interval };
   }
 
   progress(previous) {
@@ -106,8 +171,10 @@ export class TorrentTransfer {
       if (!peer) break;
       tried.add(peer.key);
       try {
+        await withTimeout(peer.waitForPiece(index), Math.max(1, Math.min(8500, deadline - Date.now())));
         const remaining = Math.max(1, deadline - Date.now());
-        const data = await withTimeout(peer.readPiece(index), Math.min(90000, remaining));
+        const pieceTime = Math.max(12000, Math.min(90000, this.meta.pieceLength / 200));
+        const data = await withTimeout(peer.readPiece(index), Math.min(pieceTime, remaining));
         const hash = new Uint8Array(await crypto.subtle.digest('SHA-1', data));
         const expected = this.meta.hashes.subarray(index * 20, index * 20 + 20);
         if (!equal(hash, expected)) throw new Error('BT piece hash mismatch');
@@ -132,6 +199,18 @@ export class TorrentTransfer {
   async acquire(index, tried, deadline) {
     while (!this.closed && Date.now() < deadline) {
       const now = Date.now();
+      if (this.udp && !this.meta.private && !this.meta.pttime && !this.extraLookup &&
+          this.tracker !== 'dht' && this.stats.ready < 2 && now - this.startedAt >= 8000) {
+        this.searchingDht = true;
+        this.extraLookup = this.udpLookup('dht', {}, deadline).then(reply => {
+          const addresses = new Map(this.peers.map(peer => [addressKey(peer), peer]));
+          for (const peer of reply.peers) addresses.set(addressKey(peer), peer);
+          this.peers = [...addresses.values()];
+        }).catch(() => {}).finally(() => {
+          this.searchingDht = false;
+          this.notify();
+        });
+      }
       const idle = [...this.connections.values()].find(
         peer => !this.inUse.has(peer) && !tried.has(peer.key) && peer.canServe(index),
       );
@@ -161,7 +240,7 @@ export class TorrentTransfer {
         }
       }
 
-      const canWait = this.dials.size > 0 || [...this.inUse].some(
+      const canWait = this.searchingDht || this.dials.size > 0 || [...this.inUse].some(
         peer => !tried.has(peer.key) && peer.canServe(index),
       );
       if (!canWait) return null;
@@ -221,7 +300,9 @@ export class TorrentTransfer {
     if (completed) await this.updateTracker(previous, 'completed').catch(() => {});
     const { downloaded, left } = this.progress(previous);
     try {
-      await announce(this.meta, this.client, 'stopped', downloaded, left, this.tracker);
+      if (this.tracker !== 'dht') {
+        await this.lookup(this.tracker, 'stopped', downloaded, left, Date.now() + 12000);
+      }
       await this.cache?.delete(this.client.cacheKey).catch(() => {});
     } catch {
       // Keep the last accepted tracker state available for a retry.
@@ -266,7 +347,6 @@ class Peer {
   }
 
   async readPiece(index) {
-    await this.waitForPiece(index);
     const length = Math.min(this.meta.pieceLength, this.meta.size - index * this.meta.pieceLength);
     const data = new Uint8Array(length);
     for (let batch = 0; batch < length; batch += blockLength * batchLength) {
