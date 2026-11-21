@@ -3,6 +3,8 @@ import { announce } from './torrent.js';
 const protocol = new TextEncoder().encode('BitTorrent protocol');
 const blockLength = 16 * 1024;
 const batchLength = 48;
+const openingLimit = 5;
+const connectionLimit = 32;
 
 export class TorrentTransfer {
   constructor(meta, connect, client, cache) {
@@ -11,7 +13,11 @@ export class TorrentTransfer {
     this.client = client;
     this.cache = cache;
     this.peers = [];
-    this.dials = new Set();
+    this.connections = new Map();
+    this.dials = new Map();
+    this.inUse = new Set();
+    this.cooldowns = new Map();
+    this.waiters = new Set();
     this.stats = { tcp: 0, handshakes: 0, ready: 0 };
     this.downloaded = 0;
     this.reported = 0;
@@ -19,10 +25,11 @@ export class TorrentTransfer {
     this.nextAnnounce = 0;
   }
 
-  async start() {
+  async start(deadline) {
     await this.refresh();
     this.started = true;
-    if (!this.peers.length) throw new Error('PTTime tracker 暂无可用的节点。');
+    if (!this.peers.length) throw new Error('Tracker 暂无可用的 TCP 节点。');
+    if (Date.now() >= deadline) throw new Error('等待 Tracker 返回节点超时。');
   }
 
   async cachedSession() {
@@ -35,6 +42,7 @@ export class TorrentTransfer {
 
   useSession(session) {
     this.peers = session.peers;
+    this.tracker = session.tracker ?? this.tracker;
     this.nextAnnounce = session.nextAnnounce;
     this.announced = Math.max(this.announced, session.downloaded);
   }
@@ -57,10 +65,12 @@ export class TorrentTransfer {
 
   async updateTracker(previous, event) {
     const { downloaded, left } = this.progress(previous);
-    const reply = await announce(this.meta, this.client, event, downloaded, left);
+    const tracker = this.tracker ?? previous?.tracker;
+    const reply = await announce(this.meta, this.client, event, downloaded, left, tracker);
     this.announcedHere = true;
     const session = {
       peers: reply.peers.length ? reply.peers : this.peers,
+      tracker: reply.tracker,
       nextAnnounce: Date.now() + reply.interval * 1000,
       downloaded,
       left,
@@ -84,31 +94,34 @@ export class TorrentTransfer {
     };
   }
 
-  async piece(index) {
+  async piece(index, deadline = Date.now() + 90000) {
     if (this.closed) throw new Error('BT 传输已关闭。');
     if (Date.now() >= this.nextAnnounce) {
       this.nextAnnounce = Date.now() + 60000;
       await this.refresh().catch(() => {});
     }
     const tried = new Set();
-    while (!this.closed) {
-      if (!this.peer) this.peer = await this.findPeer(index, tried);
-      if (!this.peer) break;
-      if (this.closed) {
-        this.peer.close();
-        break;
-      }
-      tried.add(this.peer.address);
+    while (!this.closed && Date.now() < deadline) {
+      const peer = await this.acquire(index, tried, deadline);
+      if (!peer) break;
+      tried.add(peer.key);
       try {
-        const data = await withTimeout(this.peer.readPiece(index), 90000);
+        const remaining = Math.max(1, deadline - Date.now());
+        const data = await withTimeout(peer.readPiece(index), Math.min(90000, remaining));
         const hash = new Uint8Array(await crypto.subtle.digest('SHA-1', data));
         const expected = this.meta.hashes.subarray(index * 20, index * 20 + 20);
         if (!equal(hash, expected)) throw new Error('BT piece hash mismatch');
         this.downloaded += data.length;
         return data;
       } catch {
-        this.peer.close();
-        this.peer = null;
+        if (peer.canServe(index)) {
+          this.connections.delete(peer.key);
+          this.cooldowns.set(peer.key, Date.now() + 15000);
+          peer.close();
+        }
+      } finally {
+        this.inUse.delete(peer);
+        this.notify();
       }
     }
     throw new Error('本次未取到校验通过的 BT 分片（tracker 节点 ' +
@@ -116,52 +129,99 @@ export class TorrentTransfer {
       this.stats.handshakes + '，可请求 ' + this.stats.ready + '）。');
   }
 
-  async findPeer(index, tried) {
-    const candidates = this.peers.filter(peer => !tried.has(peer));
-    for (let start = 0; !this.closed && start < candidates.length; start += 5) {
-      const wave = candidates.slice(start, start + 5);
-      const sockets = [];
-      let winner;
-      try {
-        winner = await Promise.any(wave.map(async address => {
-          tried.add(address);
-          const peer = new Peer(address, this.meta, this.client.peerId, this.connect, this.stats);
-          sockets.push(peer);
-          this.dials.add(peer);
-          await withTimeout(peer.open(index), 12000);
-          return peer;
-        }));
-        // Keep unused addresses available for a piece retry.
-        for (const address of wave) if (address !== winner.address) tried.delete(address);
-        return winner;
-      } catch {
-        // This group contains no peer serving the requested piece.
-      } finally {
-        for (const peer of sockets) {
-          this.dials.delete(peer);
-          if (peer !== winner) peer.close();
+  async acquire(index, tried, deadline) {
+    while (!this.closed && Date.now() < deadline) {
+      const now = Date.now();
+      const idle = [...this.connections.values()].find(
+        peer => !this.inUse.has(peer) && !tried.has(peer.key) && peer.canServe(index),
+      );
+      if (idle) {
+        this.inUse.add(idle);
+        return idle;
+      }
+
+      const candidate = this.peers.find(address => {
+        const key = addressKey(address);
+        return !tried.has(key) && !this.connections.has(key) && !this.dials.has(key) &&
+          (this.cooldowns.get(key) ?? 0) <= now;
+      });
+      if (candidate && this.dials.size < openingLimit) {
+        if (this.connections.size + this.dials.size >= connectionLimit) {
+          const unsuitable = [...this.connections.values()].find(peer => !this.inUse.has(peer));
+          if (unsuitable) {
+            this.connections.delete(unsuitable.key);
+            unsuitable.close();
+            continue;
+          }
+        } else {
+          const peer = await this.dial(candidate, deadline);
+          if (peer) return peer;
+          tried.add(addressKey(candidate));
+          continue;
         }
       }
+
+      const canWait = this.dials.size > 0 || [...this.inUse].some(
+        peer => !tried.has(peer.key) && peer.canServe(index),
+      );
+      if (!canWait) return null;
+      await this.waitForPeer(deadline);
     }
     return null;
+  }
+
+  async dial(address, deadline) {
+    const key = addressKey(address);
+    let peer;
+    try {
+      peer = new Peer(address, this.meta, this.client.peerId, this.connect, this.stats);
+      this.dials.set(key, peer);
+      await withTimeout(peer.open(), Math.max(1, Math.min(10000, deadline - Date.now())));
+      if (this.closed) throw new Error('BT 传输已关闭。');
+      this.connections.set(key, peer);
+      this.inUse.add(peer);
+      return peer;
+    } catch {
+      this.cooldowns.set(key, Date.now() + 30000);
+      peer?.close();
+      return null;
+    } finally {
+      this.dials.delete(key);
+      this.notify();
+    }
+  }
+
+  waitForPeer(deadline) {
+    return new Promise(resolve => {
+      const wake = () => {
+        this.waiters.delete(wake);
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(wake, Math.max(1, deadline - Date.now()));
+      this.waiters.add(wake);
+    });
+  }
+
+  notify() {
+    for (const wake of this.waiters) wake();
   }
 
   async finish(result) {
     if (this.closed) return;
     this.closed = true;
-    this.peer?.close();
-    for (const peer of this.dials) peer.close();
+    for (const peer of this.connections.values()) peer.close();
+    for (const peer of this.dials.values()) peer.close();
+    this.notify();
+
     const completed = result === 'complete' && this.downloaded === this.meta.size;
-    // A successful short range and a borrowed session can still serve other readers.
-    if ((!this.announcedHere || result === 'range') && !completed) return;
+    if ((!this.announcedHere || (result === 'range' && this.cache)) && !completed) return;
 
     const previous = await this.cachedSession();
-    if (completed) {
-      await this.updateTracker(previous, 'completed').catch(() => {});
-    }
+    if (completed) await this.updateTracker(previous, 'completed').catch(() => {});
     const { downloaded, left } = this.progress(previous);
     try {
-      await announce(this.meta, this.client, 'stopped', downloaded, left);
+      await announce(this.meta, this.client, 'stopped', downloaded, left, this.tracker);
       await this.cache?.delete(this.client.cacheKey).catch(() => {});
     } catch {
       // Keep the last accepted tracker state available for a retry.
@@ -169,9 +229,13 @@ export class TorrentTransfer {
   }
 }
 
+function addressKey(address) {
+  return address.hostname + '/' + address.port;
+}
+
 class Peer {
   constructor(address, meta, peerId, connect, stats) {
-    this.address = address;
+    this.key = addressKey(address);
     this.meta = meta;
     this.peerId = peerId;
     this.stats = stats;
@@ -184,7 +248,7 @@ class Peer {
     this.offset = 0;
   }
 
-  async open(index) {
+  async open() {
     await this.socket.opened;
     this.stats.tcp++;
     const handshake = new Uint8Array(68);
@@ -199,8 +263,6 @@ class Peer {
         equal(reply.subarray(48), this.peerId)) throw new Error('Invalid BT handshake');
     this.stats.handshakes++;
     await this.writer.write(Uint8Array.of(0, 0, 0, 1, 2));
-    await this.waitForPiece(index);
-    this.stats.ready++;
   }
 
   async readPiece(index) {
@@ -250,12 +312,20 @@ class Peer {
 
   async waitForPiece(index) {
     while (true) {
-      if (this.available && !(this.available[index >>> 3] & (0x80 >>> (index & 7)))) {
+      if (!this.canServe(index)) {
         throw new Error('Peer has not downloaded this piece');
       }
-      if (!this.choked) return;
+      if (!this.choked) {
+        if (!this.ready) this.stats.ready++;
+        this.ready = true;
+        return;
+      }
       this.note(await this.message());
     }
+  }
+
+  canServe(index) {
+    return !this.available || Boolean(this.available[index >>> 3] & (0x80 >>> (index & 7)));
   }
 
   note(message) {

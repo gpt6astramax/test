@@ -1,11 +1,12 @@
 import { connect } from 'cloudflare:sockets';
-import { clientIdentity, loadTorrent, readBytes } from './torrent.js';
+import { clientIdentity, httpUrl, loadTorrent, readBytes, readTorrent, torrentLimit } from './torrent.js';
 import { TorrentTransfer } from './peer.js';
 
 const route = '/torrent-download';
 const pttime = 'https://www.pttime.org';
 const downloadPath = '/download.php';
 const cookieName = 'pttime_source';
+const torrentTtl = 21600;
 
 const privateHeaders = {
   'Cache-Control': 'private, no-store',
@@ -16,22 +17,22 @@ const privateHeaders = {
 export default {
   async fetch(request, env, ctx) {
     const { origin, pathname } = new URL(request.url);
-
     if (pathname === route || pathname === route + '/') {
       if (request.method === 'GET') return downloadPage();
       return message('请使用 GET。', 405, { Allow: 'GET' });
     }
+    if (pathname === route + '/download') return openDownload(request, origin);
 
-    if (pathname === route + '/download') {
-      return openDownload(request, origin);
-    }
-
-    const file = /^\/torrent-download\/file\/(\d{1,20})(\/ready)?$/.exec(pathname);
-    if (!file) return message('找不到该地址。', 404);
+    const legacy = /^\/torrent-download\/file\/(\d{1,20})(?:(\/ready)|\/file\/(\d{1,7}))?$/.exec(pathname);
+    const job = /^\/torrent-download\/job\/([0-9a-f]{32})\/(ready|file\/(\d{1,7}))$/.exec(pathname);
+    if (!legacy && !job) return message('找不到该地址。', 404);
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return message('请使用 GET 或 HEAD。', 405, { Allow: 'GET, HEAD' });
     }
-    return downloadFile(request, ctx, origin, file[1], Boolean(file[2]));
+    const base = legacy ? route + '/file/' + legacy[1] : route + '/job/' + job[1];
+    const ready = legacy ? Boolean(legacy[2]) : job[2] === 'ready';
+    const index = legacy ? Number(legacy[3] ?? 0) : Number(job[3]);
+    return serveDownload(request, ctx, origin, base, ready, index, legacy?.[1], job?.[1]);
   },
 };
 
@@ -42,49 +43,116 @@ async function openDownload(request, origin) {
   if (requestOrigin && requestOrigin !== origin && !sameOriginNavigation) {
     return message('请从下载页提交。', 403);
   }
-  if (request.headers.get('Content-Type')?.split(';')[0] !== 'application/x-www-form-urlencoded') {
-    return message('请提交 PTTime 下载链接。', 415);
+  try {
+    const contentType = request.headers.get('Content-Type') ?? '';
+    let form;
+    if (contentType.startsWith('multipart/form-data;')) {
+      const body = await readBytes(request.body, torrentLimit + 8192);
+      form = await new Response(body, { headers: { 'Content-Type': contentType } }).formData();
+    } else if (contentType.split(';')[0] === 'application/x-www-form-urlencoded') {
+      form = new URLSearchParams(new TextDecoder().decode(await readBytes(request.body, 8192)));
+    } else {
+      return fileError(request, '请粘贴种子链接或上传 .torrent 文件。', 415, route + '/');
+    }
+
+    const input = form.get('url');
+    const upload = form.get('torrent');
+    const source = typeof input === 'string' ? httpUrl(input.trim()) : null;
+    const hasUpload = upload && typeof upload.stream === 'function' && upload.size > 0;
+    if (hasUpload && source) throw new Error('请选择一个种子链接或文件。');
+    if (!hasUpload && !source) throw new Error('请粘贴公开 HTTP(S) 种子链接或上传 .torrent 文件。');
+
+    const credentials = source && parseSource(source.href);
+    if (credentials) {
+      const { id, uid, passkey } = credentials;
+      const base = route + '/file/' + id;
+      return redirectToReady(base, cookieName + '=' + id + '.' + uid + '.' + passkey, 86400);
+    }
+
+    const raw = hasUpload
+      ? await readBytes(upload.stream(), torrentLimit)
+      : await readTorrent(source);
+    const meta = await loadTorrent(raw);
+    const token = crypto.randomUUID().replaceAll('-', '');
+    const base = route + '/job/' + token;
+    try {
+      await saveTorrent(origin, token, raw);
+    } catch {
+      if (!source) throw new Error('种子暂存失败，请重试上传。');
+    }
+    const cookie = source
+      ? 'bt_url=' + hexInfoHash(meta) + '.' +
+        btoa(source.href).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+      : null;
+    return redirectToReady(base, cookie);
+  } catch (error) {
+    return fileError(request, safeError(error, '读取种子失败。'), 400, route + '/');
   }
-
-  const form = await readBytes(request.body, 4096).catch(() => null);
-  if (!form) return message('下载链接过长或无法读取。', 400);
-  const source = new URLSearchParams(new TextDecoder().decode(form)).get('url');
-  const credentials = parseSource(source);
-  if (!credentials) return message('请输入带 id、uid 和 passkey 的 PTTime 下载链接。', 400);
-
-  const { id, uid, passkey } = credentials;
-  const filePath = route + '/file/' + id;
-  return new Response(null, {
-    status: 303,
-    headers: {
-      ...privateHeaders,
-      Location: filePath + '/ready',
-      'Set-Cookie': cookieName + '=' + id + '.' + uid + '.' + passkey +
-        '; Path=' + filePath + '; Max-Age=86400; HttpOnly; Secure; SameSite=Lax',
-    },
-  });
 }
 
-async function downloadFile(request, ctx, origin, id, ready) {
-  const filePath = route + '/file/' + id;
-  const stored = request.headers.get('Cookie')?.match(
-    /(?:^|;\s*)pttime_source=(\d{1,20})\.(\d{1,20})\.([a-f0-9]{32})(?=;|$)/i,
-  );
-  if (!stored || stored[1] !== id) {
-    return fileError(request, '请先从 PTTime 下载页打开这个种子。', 401, route + '/');
+function redirectToReady(base, cookie, age = torrentTtl) {
+  const headers = { ...privateHeaders, Location: base + '/ready' };
+  if (cookie) {
+    headers['Set-Cookie'] = cookie + '; Path=' + base + '; Max-Age=' + age +
+      '; HttpOnly; Secure; SameSite=Lax';
   }
+  return new Response(null, { status: 303, headers });
+}
 
-  const source = new URL(downloadPath, pttime);
-  source.search = new URLSearchParams({ id, passkey: stored[3], uid: stored[2] });
+function torrentKey(origin, token) {
+  return new Request(origin + route + '/.torrent/' + token);
+}
 
+function saveTorrent(origin, token, raw) {
+  return caches.default.put(torrentKey(origin, token), new Response(raw, {
+    headers: { 'Cache-Control': 'max-age=' + torrentTtl },
+  }));
+}
+
+async function jobTorrent(request, origin, token) {
+  const cached = await caches.default.match(torrentKey(origin, token)).catch(() => undefined);
+  if (cached) return readBytes(cached.body, torrentLimit);
+  const cookie = request.headers.get('Cookie')?.match(
+    /(?:^|;\s*)bt_url=([a-f0-9]{40})\.([a-z0-9_-]{1,3000})(?:;|$)/i,
+  );
+  const source = cookie && httpUrl(atob(cookie[2].replaceAll('-', '+').replaceAll('_', '/')));
+  if (!source) return null;
+  const raw = await readTorrent(source);
+  if (hexInfoHash(await loadTorrent(raw)) !== cookie[1]) throw new Error('种子链接的内容已变化，请重新添加。');
+  await saveTorrent(origin, token, raw).catch(() => {});
+  return raw;
+}
+
+function hexInfoHash(meta) {
+  return Array.from(meta.infoHash, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function serveDownload(request, ctx, origin, base, ready, index, id, token) {
   let transfer;
   try {
-    const meta = await loadTorrent(source);
-    if (ready) return readyPage(meta, filePath);
+    let raw;
+    if (id) {
+      const stored = request.headers.get('Cookie')?.match(
+        /(?:^|;\s*)pttime_source=(\d{1,20})\.(\d{1,20})\.([a-f0-9]{32})(?=;|$)/i,
+      );
+      if (!stored || stored[1] !== id) {
+        return fileError(request, '请先从下载页打开这个种子。', 401, route + '/');
+      }
+      const source = new URL(downloadPath, pttime);
+      source.search = new URLSearchParams({ id, passkey: stored[3], uid: stored[2] });
+      raw = await readTorrent(source);
+    } else {
+      raw = await jobTorrent(request, origin, token);
+      if (!raw) return fileError(request, '种子暂存已过期，请重新粘贴链接或上传文件。', 404, route + '/');
+    }
 
-    const range = byteRange(request.headers.get('Range'), meta.size);
+    const meta = await loadTorrent(raw);
+    if (ready) return readyPage(meta, base, Boolean(id));
+    const file = meta.files[index];
+    if (!file) return fileError(request, '种子里没有这个文件。', 404, base + '/ready');
+    const range = byteRange(request.headers.get('Range'), file.size);
     if (!range) {
-      return message('请求的区间超出文件范围。', 416, { 'Content-Range': 'bytes */' + meta.size });
+      return message('请求的区间超出文件范围。', 416, { 'Content-Range': 'bytes */' + file.size });
     }
 
     const size = range.end - range.start + 1;
@@ -92,32 +160,38 @@ async function downloadFile(request, ctx, origin, id, ready) {
       ...privateHeaders,
       'Accept-Ranges': 'bytes',
       'Content-Type': 'application/octet-stream',
-      'Content-Disposition': disposition(meta.filename),
+      'Content-Disposition': disposition(file.filename),
       'Content-Length': String(size),
     };
     const status = range.partial ? 206 : 200;
-    if (range.partial) headers['Content-Range'] = 'bytes ' + range.start + '-' + range.end + '/' + meta.size;
+    if (range.partial) headers['Content-Range'] = 'bytes ' + range.start + '-' + range.end + '/' + file.size;
     if (request.method === 'HEAD') return new Response(null, { status, headers });
+    if (size === 0) return new Response(new Uint8Array(), { status, headers });
 
     const client = await clientIdentity(meta, origin);
-    transfer = new TorrentTransfer(meta, connect, client, caches.default);
-    await transfer.start();
-    let position = range.start;
-    let firstPiece = await transfer.piece(Math.floor(position / meta.pieceLength));
+    const deadline = Date.now() + 55000;
+    transfer = new TorrentTransfer(meta, connect, client, meta.pttime ? caches.default : undefined);
+    await transfer.start(deadline);
+    let position = file.offset + range.start;
+    const end = file.offset + range.end;
+    const firstIndex = Math.floor(position / meta.pieceLength);
+    const lastIndex = Math.floor(end / meta.pieceLength);
+    const read = pieceWindow(transfer, firstIndex, lastIndex, deadline);
+    let first = await read(firstIndex);
 
     const body = new ReadableStream({
       async pull(controller) {
         try {
-          const index = Math.floor(position / meta.pieceLength);
-          const piece = firstPiece ?? await transfer.piece(index);
-          firstPiece = null;
-          const offset = position - index * meta.pieceLength;
-          const length = Math.min(piece.length - offset, range.end - position + 1);
+          const pieceIndex = Math.floor(position / meta.pieceLength);
+          const piece = first ?? await read(pieceIndex);
+          first = null;
+          const offset = position - pieceIndex * meta.pieceLength;
+          const length = Math.min(piece.length - offset, end - position + 1);
           controller.enqueue(piece.subarray(offset, offset + length));
           position += length;
-          if (position > range.end) {
+          if (position > end) {
             controller.close();
-            ctx.waitUntil(transfer.finish(size === meta.size ? 'complete' : 'range'));
+            ctx.waitUntil(transfer.finish(size === meta.size ? 'complete' : size === file.size ? 'file' : 'range'));
           }
         } catch (error) {
           controller.error(error);
@@ -134,15 +208,41 @@ async function downloadFile(request, ctx, origin, id, ready) {
     return new Response(output.readable, { status, headers });
   } catch (error) {
     if (transfer) ctx.waitUntil(transfer.finish());
-    const publicMessage = error?.message?.replace(/https?:\/\/\S+|[0-9a-f]{32,}/gi, '[已隐藏]');
-    const duplicate = publicMessage?.includes('下载相同种子');
-    return fileError(
-      request,
-      publicMessage || '无法从 BT 节点读取这个文件。',
-      duplicate ? 409 : 502,
-      ready ? route + '/' : filePath + '/ready',
-    );
+    const reason = safeError(error, '无法从 BT 节点读取这个文件。');
+    return fileError(request, reason, reason.includes('下载相同种子') ? 409 : 502,
+      ready ? route + '/' : base + '/ready');
   }
+}
+
+function pieceWindow(transfer, first, last, deadline) {
+  const pending = new Map();
+  const limit = Math.max(1, Math.min(32, Math.floor(48 * 1024 * 1024 / transfer.meta.pieceLength)));
+  let next = first;
+  function fill() {
+    while (pending.size < limit && next <= last) {
+      const index = next++;
+      const timeout = index === first ? deadline : Date.now() + 110000;
+      pending.set(index, transfer.piece(index, timeout).then(
+        data => ({ data }),
+        error => ({ error }),
+      ));
+    }
+  }
+  fill();
+  return async index => {
+    const result = await pending.get(index);
+    const data = result.error && index !== first
+      ? await transfer.piece(index, Date.now() + 90000)
+      : result.data;
+    if (!data) throw result.error;
+    pending.delete(index);
+    fill();
+    return data;
+  };
+}
+
+function safeError(error, fallback) {
+  return error?.message?.replace(/https?:\/\/\S+|[0-9a-f]{32,}/gi, '[已隐藏]') || fallback;
 }
 
 function byteRange(header, size) {
@@ -189,7 +289,7 @@ function message(text, status, headers) {
 function fileError(request, reason, status, back) {
   const navigation = request.headers.get('Sec-Fetch-Mode') === 'navigate' ||
     request.headers.get('Accept')?.includes('text/html');
-  if (request.method !== 'GET' || !navigation) return message(reason, status);
+  if (request.method === 'HEAD' || !navigation) return message(reason, status);
 
   const hint = status === 409
     ? '<p>先暂停同一种子的其他下载，在 PTTime 资源页点「小扫把」，再回来重试。</p>'
@@ -215,10 +315,16 @@ function escapeText(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function readyPage(meta, filePath) {
+function readyPage(meta, base, legacy) {
   const nonce = crypto.randomUUID();
-  const filename = escapeText(meta.filename);
-  const size = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(meta.size / 1e9);
+  const files = meta.files.map((file, index) => {
+    const size = file.size >= 1e9 ? (file.size / 1e9).toFixed(2) + ' GB'
+      : file.size >= 1e6 ? (file.size / 1e6).toFixed(2) + ' MB'
+      : file.size >= 1e3 ? (file.size / 1e3).toFixed(2) + ' KB' : file.size + ' B';
+    const target = legacy && index === 0 ? base : base + '/file/' + index;
+    return '<li><p class="file">' + escapeText(file.path) + '</p><p>' + size +
+      '</p><p><a href="' + target + '" data-download>下载文件</a></p></li>';
+  }).join('\n');
   const html = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -231,6 +337,8 @@ function readyPage(meta, filePath) {
   main { max-width: 36rem; margin: 12vh auto 0; padding: 0 1.25rem; }
   h1 { font-size: 1.65rem; }
   .file { overflow-wrap: anywhere; }
+  ul { padding: 0; list-style: none; }
+  li + li { border-top: 1px solid #8886; padding-top: .5rem; }
   a { display: inline-block; background: #1059d2; color: white; text-decoration: none; padding: .8rem 1.2rem; border-radius: .65rem; }
   output { display: block; min-height: 1.5em; }
 </style>
@@ -238,20 +346,20 @@ function readyPage(meta, filePath) {
 <body>
 <main>
   <h1>下载原文件</h1>
-  <p class="file">FILE_NAME</p>
-  <p>FILE_SIZE GB</p>
-  <p><a id="download" href="FILE_PATH">下载文件</a></p>
   <p><output id="status" role="status"></output></p>
+  <ul>FILE_LIST</ul>
 </main>
 <script nonce="NONCE">
-  document.getElementById('download').addEventListener('click', () => {
-    document.getElementById('status').textContent = '正在连接 BT 节点并校验首个分片。文件就绪后，浏览器会提示下载。';
+  document.querySelector('ul').addEventListener('click', event => {
+    if (event.target.closest('[data-download]')) {
+      document.getElementById('status').textContent = '正在并行连接 BT 节点。首片校验通过后，浏览器会开始下载。';
+    }
   });
 </script>
 </body>
 </html>`;
-  return new Response(html.replace(/FILE_NAME|FILE_SIZE|FILE_PATH|NONCE/g, token => ({
-    FILE_NAME: filename, FILE_SIZE: size, FILE_PATH: filePath, NONCE: nonce,
+  return new Response(html.replace(/FILE_LIST|NONCE/g, token => ({
+    FILE_LIST: files, NONCE: nonce,
   })[token]), {
     headers: {
       ...privateHeaders,
@@ -269,22 +377,24 @@ function downloadPage() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PTTime 原文件下载</title>
+<title>BT 文件下载</title>
 <style>
   :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
   main { max-width: 32rem; margin: 12vh auto 0; padding: 0 1rem; }
-  label { display: block; }
+  label { display: block; margin-top: 1rem; }
   input, button { box-sizing: border-box; padding: .7rem; margin-top: .5rem; font: inherit; }
   input { display: block; width: 100%; }
 </style>
 </head>
 <body>
 <main>
-  <h1>PTTime 原文件下载</h1>
-  <form action="/torrent-download/download" method="post" autocomplete="off">
-    <label for="url">PTTime 下载链接</label>
-    <input id="url" name="url" type="url" required maxlength="2048" spellcheck="false">
-    <button type="submit">打开下载页</button>
+  <h1>BT 文件下载</h1>
+  <form action="/torrent-download/download" method="post" enctype="multipart/form-data" autocomplete="off">
+    <label for="url">种子链接</label>
+    <input id="url" name="url" type="url" maxlength="2048" spellcheck="false" placeholder="https://example.com/video.torrent">
+    <label for="torrent">或上传 .torrent 文件</label>
+    <input id="torrent" name="torrent" type="file" accept=".torrent,application/x-bittorrent">
+    <button type="submit">查看文件</button>
   </form>
 </main>
 <script nonce="NONCE">
