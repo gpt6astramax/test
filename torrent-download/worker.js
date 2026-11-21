@@ -66,10 +66,13 @@ async function openDownload(request, origin) {
 }
 
 async function downloadFile(request, ctx, origin, id, ready) {
+  const filePath = route + '/file/' + id;
   const stored = request.headers.get('Cookie')?.match(
     /(?:^|;\s*)pttime_source=(\d{1,20})\.(\d{1,20})\.([a-f0-9]{32})(?=;|$)/i,
   );
-  if (!stored || stored[1] !== id) return message('请先从 PTTime 下载页打开这个种子。', 401);
+  if (!stored || stored[1] !== id) {
+    return fileError(request, '请先从 PTTime 下载页打开这个种子。', 401, route + '/');
+  }
 
   const source = new URL(downloadPath, pttime);
   source.search = new URLSearchParams({ id, passkey: stored[3], uid: stored[2] });
@@ -77,7 +80,7 @@ async function downloadFile(request, ctx, origin, id, ready) {
   let transfer;
   try {
     const meta = await loadTorrent(source);
-    if (ready) return readyPage(meta, route + '/file/' + id);
+    if (ready) return readyPage(meta, filePath);
 
     const range = byteRange(request.headers.get('Range'), meta.size);
     if (!range) {
@@ -100,19 +103,21 @@ async function downloadFile(request, ctx, origin, id, ready) {
     transfer = new TorrentTransfer(meta, connect, client, caches.default);
     await transfer.start();
     let position = range.start;
+    let firstPiece = await transfer.piece(Math.floor(position / meta.pieceLength));
 
     const body = new ReadableStream({
       async pull(controller) {
         try {
           const index = Math.floor(position / meta.pieceLength);
-          const piece = await transfer.piece(index);
+          const piece = firstPiece ?? await transfer.piece(index);
+          firstPiece = null;
           const offset = position - index * meta.pieceLength;
           const length = Math.min(piece.length - offset, range.end - position + 1);
           controller.enqueue(piece.subarray(offset, offset + length));
           position += length;
           if (position > range.end) {
             controller.close();
-            ctx.waitUntil(transfer.finish(range.start === 0 && range.end === meta.size - 1));
+            ctx.waitUntil(transfer.finish(size === meta.size ? 'complete' : 'range'));
           }
         } catch (error) {
           controller.error(error);
@@ -130,7 +135,13 @@ async function downloadFile(request, ctx, origin, id, ready) {
   } catch (error) {
     if (transfer) ctx.waitUntil(transfer.finish());
     const publicMessage = error?.message?.replace(/https?:\/\/\S+|[0-9a-f]{32,}/gi, '[已隐藏]');
-    return message(publicMessage || '无法从 BT 节点读取这个文件。', 502);
+    const duplicate = publicMessage?.includes('下载相同种子');
+    return fileError(
+      request,
+      publicMessage || '无法从 BT 节点读取这个文件。',
+      duplicate ? 409 : 502,
+      ready ? route + '/' : filePath + '/ready',
+    );
   }
 }
 
@@ -175,9 +186,38 @@ function message(text, status, headers) {
   });
 }
 
+function fileError(request, reason, status, back) {
+  const navigation = request.headers.get('Sec-Fetch-Mode') === 'navigate' ||
+    request.headers.get('Accept')?.includes('text/html');
+  if (request.method !== 'GET' || !navigation) return message(reason, status);
+
+  const hint = status === 409
+    ? '<p>先暂停同一种子的其他下载，在 PTTime 资源页点「小扫把」，再回来重试。</p>'
+    : '';
+  const html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>下载未开始</title>' +
+    '<style>:root{color-scheme:light dark;font:16px/1.5 system-ui,sans-serif}' +
+    'main{max-width:36rem;margin:12vh auto;padding:0 1.25rem}</style></head>' +
+    '<body><main><h1>下载未开始</h1><p>' + escapeText(reason) + '</p>' + hint +
+    '<p><a href="' + back + '">返回下载页</a></p></main></body></html>';
+  return new Response(html, {
+    status,
+    headers: {
+      ...privateHeaders,
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; style-src 'unsafe-inline'",
+    },
+  });
+}
+
+function escapeText(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function readyPage(meta, filePath) {
   const nonce = crypto.randomUUID();
-  const filename = meta.filename.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const filename = escapeText(meta.filename);
   const size = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(meta.size / 1e9);
   const html = `<!doctype html>
 <html lang="zh-CN">
@@ -200,12 +240,12 @@ function readyPage(meta, filePath) {
   <h1>下载原文件</h1>
   <p class="file">FILE_NAME</p>
   <p>FILE_SIZE GB</p>
-  <p><a id="download" href="FILE_PATH" download>下载文件</a></p>
+  <p><a id="download" href="FILE_PATH">下载文件</a></p>
   <p><output id="status" role="status"></output></p>
 </main>
 <script nonce="NONCE">
   document.getElementById('download').addEventListener('click', () => {
-    document.getElementById('status').textContent = '已发起下载。连接 BT 节点通常需要一些时间，可在浏览器下载列表里查看进度。';
+    document.getElementById('status').textContent = '正在连接 BT 节点并校验首个分片。文件就绪后，浏览器会提示下载。';
   });
 </script>
 </body>

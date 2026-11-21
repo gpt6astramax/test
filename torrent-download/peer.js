@@ -56,10 +56,9 @@ export class TorrentTransfer {
   }
 
   async updateTracker(previous, event) {
-    const downloaded = Math.max(previous?.downloaded ?? 0, this.announced) +
-      this.downloaded - this.reported;
-    const left = Math.min(previous?.left ?? this.meta.size, this.meta.size - this.downloaded);
+    const { downloaded, left } = this.progress(previous);
     const reply = await announce(this.meta, this.client, event, downloaded, left);
+    this.announcedHere = true;
     const session = {
       peers: reply.peers.length ? reply.peers : this.peers,
       nextAnnounce: Date.now() + reply.interval * 1000,
@@ -75,6 +74,14 @@ export class TorrentTransfer {
     } catch {
       // This request can still use the peers the tracker returned.
     }
+  }
+
+  progress(previous) {
+    return {
+      downloaded: Math.max(previous?.downloaded ?? 0, this.announced) +
+        this.downloaded - this.reported,
+      left: Math.min(previous?.left ?? this.meta.size, this.meta.size - this.downloaded),
+    };
   }
 
   async piece(index) {
@@ -139,17 +146,25 @@ export class TorrentTransfer {
     return null;
   }
 
-  async finish(completed = false) {
+  async finish(result) {
     if (this.closed) return;
     this.closed = true;
     this.peer?.close();
     for (const peer of this.dials) peer.close();
-    // Range readers share a logical client. Closing one must not stop the others.
-    if (this.started && completed && this.downloaded === this.meta.size) {
-      const previous = await this.cachedSession();
+    const completed = result === 'complete' && this.downloaded === this.meta.size;
+    // A successful short range and a borrowed session can still serve other readers.
+    if ((!this.announcedHere || result === 'range') && !completed) return;
+
+    const previous = await this.cachedSession();
+    if (completed) {
       await this.updateTracker(previous, 'completed').catch(() => {});
-      await announce(this.meta, this.client, 'stopped', this.announced, 0).catch(() => {});
+    }
+    const { downloaded, left } = this.progress(previous);
+    try {
+      await announce(this.meta, this.client, 'stopped', downloaded, left);
       await this.cache?.delete(this.client.cacheKey).catch(() => {});
+    } catch {
+      // Keep the last accepted tracker state available for a retry.
     }
   }
 }
