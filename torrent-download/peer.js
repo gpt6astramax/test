@@ -350,26 +350,38 @@ class PieceAssembly {
 
 class Peer {
   constructor(address, meta, peerId, connect, stats) {
+    this.address = address;
     this.key = addressKey(address);
     this.meta = meta;
     this.peerId = peerId;
+    this.connect = connect;
     this.stats = stats;
     this.choked = true;
-    this.socket = connect(address);
-    this.socket.closed.catch(() => {});
-    this.reader = this.socket.readable.getReader();
-    this.writer = this.socket.writable.getWriter();
     this.chunk = new Uint8Array(0);
     this.offset = 0;
   }
 
   async open(deadline) {
     const tcpTime = Math.max(1, Math.min(4200, deadline - Date.now()));
-    await withTimeout(this.socket.opened, tcpTime);
+    await withTimeout(this.openSocket(), tcpTime);
+    if (this.closed) throw new PeerError('ended');
+    this.reader = this.socket.readable.getReader();
+    this.writer = this.socket.writable.getWriter();
     this.tcpOpen = true;
     this.stats.tcp++;
     const handshakeTime = Math.max(1, Math.min(4800, deadline - Date.now()));
     await withTimeout(this.handshake(), handshakeTime);
+  }
+
+  async openSocket() {
+    const socket = await this.connect(this.address);
+    socket.closed?.catch(() => {});
+    if (this.closed) {
+      await socket.close();
+      throw new PeerError('ended');
+    }
+    this.socket = socket;
+    await socket.opened;
   }
 
   async handshake() {
@@ -549,8 +561,10 @@ class Peer {
   }
 
   async close() {
+    if (this.closed) return;
+    this.closed = true;
     try {
-      await this.socket.close();
+      await this.socket?.close();
     } catch {}
   }
 }

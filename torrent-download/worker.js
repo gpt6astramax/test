@@ -32,7 +32,7 @@ export default {
     const base = legacy ? route + '/file/' + legacy[1] : route + '/job/' + job[1];
     const ready = legacy ? Boolean(legacy[2]) : job[2] === 'ready';
     const index = legacy ? Number(legacy[3] ?? 0) : Number(job[3]);
-    return serveDownload(request, ctx, origin, base, ready, index, legacy?.[1], job?.[1], env?.UDP_DISCOVERY);
+    return serveDownload(request, ctx, origin, base, ready, index, legacy?.[1], job?.[1], env);
   },
 };
 
@@ -127,7 +127,7 @@ function hexInfoHash(meta) {
   return Array.from(meta.infoHash, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function serveDownload(request, ctx, origin, base, ready, index, id, token, udpNamespace) {
+async function serveDownload(request, ctx, origin, base, ready, index, id, token, env) {
   let transfer;
   try {
     let raw;
@@ -170,9 +170,10 @@ async function serveDownload(request, ctx, origin, base, ready, index, id, token
 
     const client = await clientIdentity(meta, origin);
     const deadline = Date.now() + 55000;
+    const peerConnect = env?.BT_VPC ? address => env.BT_VPC.connect(address) : connect;
     transfer = new TorrentTransfer(
-      meta, connect, client, meta.pttime ? caches.default : undefined,
-      udpNamespace?.getByName('bt-discovery'),
+      meta, peerConnect, client, meta.pttime ? caches.default : undefined,
+      env?.UDP_DISCOVERY?.getByName('bt-discovery'),
     );
     await transfer.start(deadline);
     let position = file.offset + range.start;
